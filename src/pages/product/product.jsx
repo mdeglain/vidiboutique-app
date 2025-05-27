@@ -3,7 +3,7 @@ import styled from 'styled-components';
 import { useParams } from "react-router-dom"
 
 import { ProductWrapper, Pictures, Informations, Description } from "./components"
-import axios from "@/libs/axios";
+import { useGetProductByIdQuery } from "../../features/product/productApi";
 
 
 const Flex = styled.div`
@@ -21,20 +21,29 @@ const SimilarProducts = styled.div`
 export const Product = (props) => {
     const { productId } = useParams()
 
-    const [product, setProduct] = React.useState(null)
+    const {
+        data: product,
+        isLoading,
+        isFetching,
+        isSuccess,
+        isError,
+        error
+    } = useGetProductByIdQuery(productId);
 
-    React.useEffect(() => {
-        axios.get(`/products/${productId}`,).then(response => {
-            setProduct(response.data.data)
-        })
-    }, [])
+    if (isLoading || isFetching) {
+        return <div>Loading...</div>;
+    }
+
+    if (isError) {
+        return <div>Error: {error?.message || 'Something went wrong'}</div>;
+    }
 
     return (
-        product ? (
+        isSuccess && product ? (
             <ProductWrapper>
                 <Flex>
                     <Pictures product={product} />
-                    <Informations product={product} setProduct={setProduct} />
+                    <Informations product={product} /> {/* Removed setProduct, assuming Informations doesn't need it or will be refactored separately */}
                 </Flex>
                 <Description product={product} />
                 {/* <SimilarProducts>Produits similaires (On garde mais trié par popularité)</SimilarProducts> */}

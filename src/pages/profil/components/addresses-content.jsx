@@ -7,14 +7,20 @@ import {
     Edit as EditIcon
 } from '@mui/icons-material';
 
-import axios from '@/libs/axios';
+// import axios from '@/libs/axios'; // Removed axios
+import {
+    useGetAddressesQuery,
+    useCreateAddressMutation,
+    useUpdateAddressMutation,
+    useDeleteAddressMutation,
+} from '@/features/address/addressApi'; // RTK Query hooks
 
 import { ThemeContext } from '@/contexts/theme-context';
 
 import { Modal } from '@/components/modal/modal';
 
 import { ModalContent } from './components';
-import { createAddress, removeAddress, selectAddresses, updateAddress } from '@/features/address/address.slice';
+// import { createAddress, removeAddress, selectAddresses, updateAddress } from '@/features/address/address.slice'; // Removed slice imports
 import toast from 'react-hot-toast';
 
 
@@ -73,11 +79,15 @@ export const shouldCheckErrorContext = createContext();
 export const AddressesContent = () => {
     const theme = React.useContext(ThemeContext)
 
-    const dispatch = useDispatch()
-    const addresses = useSelector(selectAddresses)
+    // const dispatch = useDispatch() // Removed if only used for slice actions
+    
+    const { data: addresses = [], isLoading: isLoadingAddresses, isError: isAddressesError, error: addressesError } = useGetAddressesQuery();
+    const [createAddressMutation, { isLoading: isCreating }] = useCreateAddressMutation();
+    const [updateAddressMutation, { isLoading: isUpdating }] = useUpdateAddressMutation();
+    const [deleteAddressMutation, { isLoading: isDeleting }] = useDeleteAddressMutation();
 
     const [isNew, setIsNew] = React.useState(false)
-    const [address, setAddress] = React.useState(null)
+    const [address, setAddress] = React.useState(null) // Local state for modal form
     const [isModalOpen, setIsModalOpen] = React.useState(null)
     const [shouldCheckError, setShouldCheckError] = React.useState(false)
 
@@ -138,34 +148,41 @@ export const AddressesContent = () => {
     }
 
     const submit = () => {
-        if (hasError()) return
+        if (hasError()) return;
         if (isNew) {
-            axios.post('addresses', address).then(response => {
-                dispatch(createAddress(response.data.data))
-                setIsModalOpen(false)
-                toast.success("L'adresse a bien été créée")
-            }).catch(_ => {
-                toast.error("Une erreur est survenue lors de la création de l'adresse")
-            })
+            createAddressMutation(address)
+                .unwrap()
+                .then(() => {
+                    setIsModalOpen(false);
+                    toast.success("L'adresse a bien été créée");
+                })
+                .catch(() => {
+                    toast.error("Une erreur est survenue lors de la création de l'adresse");
+                });
         } else {
-            axios.put(`addresses/${address.public_id}`, address).then(response => {
-                dispatch(updateAddress(response.data.data))
-                setIsModalOpen(false)
-                toast.success("L'adresse a bien été modifiée")
-            }).catch(_ => {
-                toast.error("Une erreur est survenue lors de la modification de l'adresse")
-            })
+            const { public_id, ...addressData } = address; // Separate public_id from the rest of the data
+            updateAddressMutation({ public_id, ...addressData }) // Pass public_id and the rest of the address data
+                .unwrap()
+                .then(() => {
+                    setIsModalOpen(false);
+                    toast.success("L'adresse a bien été modifiée");
+                })
+                .catch(() => {
+                    toast.error("Une erreur est survenue lors de la modification de l'adresse");
+                });
         }
     }
 
     const remove = (public_id) => {
-        axios.delete(`addresses/${public_id}`).then(_ => {
-            dispatch(removeAddress(public_id))
-            setIsModalOpen(false)
-            toast.success("L'adresse a bien été supprimée")
-        }).catch(_ => {
-            toast.error("Une erreur est survenue lors de la suppression de l'adresse")
-        })
+        deleteAddressMutation(public_id)
+            .unwrap()
+            .then(() => {
+                // setIsModalOpen(false); // Modal is not open for delete action in current UI
+                toast.success("L'adresse a bien été supprimée");
+            })
+            .catch(() => {
+                toast.error("Une erreur est survenue lors de la suppression de l'adresse");
+            });
     }
 
     const hasError = () => {
@@ -222,17 +239,33 @@ export const AddressesContent = () => {
                         </TableRow>
                     </TableHead>
                     <TableBody>
-                        {addresses
-                            .map((address, rowIndex) => {
+                        {isLoadingAddresses && (
+                            <TableRow>
+                                <TableCell colSpan={columns.length + 2} align="center">Chargement des adresses...</TableCell>
+                            </TableRow>
+                        )}
+                        {isAddressesError && (
+                            <TableRow>
+                                <TableCell colSpan={columns.length + 2} align="center">
+                                    Erreur: {addressesError?.data?.message || addressesError?.message || 'Impossible de charger les adresses'}
+                                </TableCell>
+                            </TableRow>
+                        )}
+                        {!isLoadingAddresses && !isAddressesError && addresses && addresses.length === 0 && (
+                             <TableRow>
+                                <TableCell colSpan={columns.length + 2} align="center">Aucune adresse enregistrée.</TableCell>
+                            </TableRow>
+                        )}
+                        {!isLoadingAddresses && !isAddressesError && addresses && addresses.map((addressItem, rowIndex) => { // Renamed address to addressItem to avoid conflict
                                 return (
-                                    <TableRow hover role="checkbox" tabIndex={-1} key={address.id}>
+                                    <TableRow hover role="checkbox" tabIndex={-1} key={addressItem.id}>
                                         <TableCell key={rowIndex + 1} align={"left"}>{rowIndex + 1}</TableCell>
-                                        <TableCell key={"commandNumber"} align={"left"}>{address.name}</TableCell>
+                                        <TableCell key={"commandNumber"} align={"left"}>{addressItem.name}</TableCell>
                                         <TableCell key={rowIndex + 1} align={"center"}>
-                                            <IconButton onClick={() => onEditClick(address.public_id)}>
+                                            <IconButton onClick={() => onEditClick(addressItem.public_id)} disabled={isDeleting || isUpdating || isCreating}>
                                                 <EditIcon style={{ color: theme.colors.primary }} />
                                             </IconButton>
-                                            <IconButton onClick={() => remove(address.public_id)}>
+                                            <IconButton onClick={() => remove(addressItem.public_id)} disabled={isDeleting || isUpdating || isCreating}>
                                                 <DeleteIcon style={{ color: theme.colors.danger }} />
                                             </IconButton>
                                         </TableCell>
@@ -254,6 +287,7 @@ export const AddressesContent = () => {
                         handleComplementaryInformationsChange={handleComplementaryInformationsChange}
                         submit={submit}
                         cancel={() => setIsModalOpen(false)}
+                        isLoading={isCreating || isUpdating} // Pass loading state to modal content
                     />
                 </shouldCheckErrorContext.Provider>
             </Modal>

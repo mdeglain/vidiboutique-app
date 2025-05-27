@@ -1,9 +1,12 @@
 import React, { useContext, useState } from 'react'
+import React, { useContext, useState } from 'react' // Ensure React is imported if not already
+import React, { useContext, useState } from 'react'
 import { useSelector, useDispatch } from 'react-redux'
 import { styled } from '@mui/system'
 
-import { toggleModal } from '../../features/auth/auth.slice'
-import { login } from '../../features/auth/auth.thunk'
+import { toggleModal, authSuccess, authError } from '../../features/auth/auth.slice'
+import { setUser } from '../../features/auth/user.slice'
+import { useLoginMutation, useRequestPasswordResetMutation } from '../../features/auth/authApi' // Added useRequestPasswordResetMutation
 
 import { Modal } from "../modal/modal";
 import { InputWrapper } from "./input-wrapper"
@@ -14,7 +17,7 @@ import { ErrorMessage } from "./error-message"
 
 import LogoVidiBoutique from "@/assets/logo-vidi-boutique-white.png"
 import { ThemeContext } from '@/contexts/theme-context'
-import axios from '@/libs/axios'
+// import axios from '@/libs/axios' // Removed axios
 import toast from 'react-hot-toast'
 
 const LogoWrapper = styled('div')({
@@ -59,6 +62,8 @@ export const LoginModal = () => {
     const theme = useContext(ThemeContext);
 
     const dispatch = useDispatch()
+    const [loginMutation, { isLoading: isLoggingIn, isError: isLoginError, error: loginErrorData }] = useLoginMutation();
+    const [requestPasswordReset, { isLoading: isResettingPassword, isError: isResetError, error: resetErrorData }] = useRequestPasswordResetMutation();
 
     const [email, setEmail] = useState("")
     const [password, setPassword] = useState("")
@@ -68,14 +73,34 @@ export const LoginModal = () => {
         dispatch(toggleModal())
     }
 
-    const onClick = () => {
+    const onClick = async () => {
         if (resetPassword) {
-            axios.post("/users/reset-password", { email }).then(_ => {
-                toast.success("Un email de réinitialisation de mot de passe vous a été envoyé")
-                dispatch(toggleModal())
-            })
+            requestPasswordReset({ email })
+              .unwrap()
+              .then(() => {
+                toast.success("Un email de réinitialisation de mot de passe vous a été envoyé");
+                dispatch(toggleModal());
+                setEmail(""); // Clear email field after successful request
+              })
+              .catch((error) => {
+                toast.error(error?.data?.message || "Erreur lors de la demande de réinitialisation.");
+              });
         } else {
-            dispatch(login(email, password))
+            try {
+                const response = await loginMutation({ email, password }).unwrap();
+                // Assuming response.data.data contains user and tokens
+                // Adjust based on actual API response structure
+                const { user, access_token, refresh_token } = response.data.data; 
+                dispatch(authSuccess({ access_token, refresh_token }));
+                dispatch(setUser(user));
+                toast.success("Connexion réussie !");
+                dispatch(toggleModal()); // Close modal on success
+            } catch (error) {
+                // Error object from unwrap() will contain 'status' and 'data' from the server response
+                const message = error?.data?.message || "Email ou mot de passe incorrect";
+                dispatch(authError(message)); // Dispatch error to update state.auth.error
+                toast.error(`Erreur lors de la connexion: ${message}`);
+            }
         }
     }
 
@@ -105,10 +130,22 @@ export const LoginModal = () => {
                         <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Mot de passe"/>
                     </InputWrapper>
                 }
-                <ResetLink onClick={() => setResetPassword(!resetPassword)}>{resetPassword ? "Se connecter" : "Réinitialiser le mot de passe"}</ResetLink>
+                <ResetLink onClick={() => {
+                    setResetPassword(!resetPassword);
+                    dispatch(authError(null)); // Clear any previous login errors when switching modes
+                }}>{resetPassword ? "Se connecter" : "Réinitialiser le mot de passe"}</ResetLink>
 
-                <ErrorMessage>{errorMessage}</ErrorMessage>
-                <Button onClick={onClick}>{resetPassword ? "Réinitialiser" : "Se connecter"}</Button>
+                <ErrorMessage>
+                    {resetPassword && isResetError && (resetErrorData?.data?.message || "Erreur de réinitialisation")}
+                    {!resetPassword && isLoginError && (loginErrorData?.data?.message || errorMessage)}
+                    {!resetPassword && !isLoginError && errorMessage} {/* Show existing errorMessage if not a login error */}
+                </ErrorMessage>
+                <Button 
+                    onClick={onClick} 
+                    disabled={isLoggingIn || isResettingPassword}
+                >
+                    {isLoggingIn ? 'Connexion...' : (isResettingPassword ? 'Réinitialisation...' : (resetPassword ? "Réinitialiser" : "Se connecter"))}
+                </Button>
             </Modal>
         )
     return null;

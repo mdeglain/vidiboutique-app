@@ -4,7 +4,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Pagination } from '@mui/material';
 import { styled } from '@mui/system';
 
-import axios from "@/libs/axios";
+import { useGetProductsQuery } from '../../features/product/productApi'; // Import the hook
 
 import { ProductsWrapper, PaginationWrapper, Product, Filter } from './components';
 import { selectIsAuth } from '@/features/auth/auth.selector';
@@ -37,9 +37,7 @@ export const Catalog = () => {
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
 
-    const [page, setPage] = React.useState(() => parseInt(searchParams.get('page')));
-    const [numberOfPages, setNumberOfPages] = React.useState(1);
-    const [products, setProducts] = React.useState([]);
+    const [page, setPage] = React.useState(() => parseInt(searchParams.get('page')) || 1); // Ensure page is initialized
 
     useEffect(() => {
         setPage(1)
@@ -49,36 +47,20 @@ export const Catalog = () => {
         const pageFromUrl = searchParams.get('page');
         if (pageFromUrl) {
             setPage(parseInt(pageFromUrl, 10));
+        } else {
+            // Set page to 1 if not in URL, and update URL
+            searchParams.set('page', '1');
+            navigate({ search: searchParams.toString() }, { replace: true });
+            setPage(1);
         }
-    }, []);
-
-    useEffect(() => {
-        const params = buildParams()
-        if (params) {
-            axios.get('/products', { params }).then(response => {
-                setProducts(response.data.data.items)
-                setNumberOfPages(response.data.data.pages)
-            })
-            window.scrollTo({ top: 0, behavior: 'smooth' });
-        }
-    }, [page, filters, search, isAuthenticated, sort])
-
-    const updateProducts = ({ id, newProduct }) => {
-        const newProducts = products.map(product => {
-            if (product.id === id) {
-                return newProduct
-            }
-            return product
-        })
-        setProducts(newProducts)
-    }
+    }, []); // Removed searchParams from dependencies to avoid loop, ensure it runs once
 
     const buildParams = () => {
-        if (isNaN(page)) {
+        if (isNaN(page) || page < 1) { // Ensure page is valid
             return null
         }
         let params = {
-            page: page,
+            page: page || 1, // Ensure page is passed to params
             per_page: NUMBER_OF_PRUDUCTS_PER_PAGE,
             is_recommanded: filters.isVidiChoiceActivated ? true : null,
             is_best_seller: filters.isBestSellsActivated ? true : null,
@@ -110,31 +92,57 @@ export const Catalog = () => {
         searchParams.set('page', value);
         navigate({ search: searchParams.toString() });
         setPage(value)
+        window.scrollTo({ top: 0, behavior: 'smooth' }); // Keep scroll to top on page change
     };
+
+    const params = buildParams();
+    const {
+        data, // Assuming data structure is { items: [], pages: 1 } or similar
+        isLoading,
+        isFetching,
+        isSuccess,
+        isError,
+        error
+    } = useGetProductsQuery(params, { skip: !params || !isAuthenticated }); // Skip query if params are null or user not authenticated
+
+    // Extract products and numberOfPages from data
+    // Assuming the backend directly returns the object with items and pages
+    // If it's nested under another 'data' property, it would be data?.data?.items
+    const products = data?.items || [];
+    const numberOfPages = data?.pages || 1;
+
+
+    if (!isAuthenticated) {
+        return <NoProducts>Connectez-vous pour voir les produits</NoProducts>;
+    }
+
+    if (isLoading || isFetching) {
+        return <div>Loading...</div>; // Or a more sophisticated loading indicator
+    }
+
+    if (isError) {
+        return <div>Error: {error?.message || 'Something went wrong'}</div>; // Display error message
+    }
 
     return (
         <>
-            {
-                isAuthenticated ? (
-                    <React.Fragment>
-                        <Flex>
-                            <Filter />
-                            <Sorter />
-                        </Flex>
-                        <ProductsWrapper>
-                            {products.length === 0 && <NoProducts>Aucun produit ne correspond à votre recherche.</NoProducts>}
-                            {products.map(product => (
-                                <Product product={product} key={product.id} updateProducts={updateProducts}/>
-                            ))}
-                        </ProductsWrapper>
-                        <PaginationWrapper>
-                            <Pagination count={numberOfPages} page={page} shape="rounded" onChange={handleChange} />
-                        </PaginationWrapper>
-                    </React.Fragment>
-                ) : (
-                    <NoProducts>Connectez-vous pour voir les produits</NoProducts>
-                )
-            }
+            <Flex>
+                <Filter />
+                <Sorter />
+            </Flex>
+            {isSuccess && (
+                <ProductsWrapper>
+                    {products.length === 0 && <NoProducts>Aucun produit ne correspond à votre recherche.</NoProducts>}
+                    {products.map(product => (
+                        <Product product={product} key={product.id} /> // Removed updateProducts
+                    ))}
+                </ProductsWrapper>
+            )}
+            {numberOfPages > 1 && ( // Only show pagination if there's more than one page
+                <PaginationWrapper>
+                    <Pagination count={numberOfPages} page={page || 1} shape="rounded" onChange={handleChange} />
+                </PaginationWrapper>
+            )}
         </>
     )
 }

@@ -18,14 +18,15 @@ import { MdMessage } from "react-icons/md";
 import { FaSquareCheck, FaSquareXmark } from "react-icons/fa6";
 
 import { ThemeContext } from '@/contexts/theme-context';
-import axios from '@/libs/axios';
+// import axios from '@/libs/axios'; // Removed axios
 import { calculateShippingCosts, calculateTotal, eur } from '@/utils';
 import { format } from 'date-fns';
-import { selectUser } from '@/features/auth/user.selector';
-import { useDispatch, useSelector } from 'react-redux';
+// import { selectUser } from '@/features/auth/user.selector'; // selectUser seems unused in the provided snippet
+import { useSelector } from 'react-redux'; // useDispatch might be needed if other thunks/actions are used, but not for setAdminOrders
 import toast from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
-import { selectAdminOrders, selectOrders, setAdminOrders } from '@/features/orders/orders.slice';
+// import { selectAdminOrders, selectOrders, setAdminOrders } from '@/features/orders/orders.slice'; // Removed slice imports
+import { useGetOrdersQuery, useGetAdminOrdersQuery, useUpdateOrderStatusMutation } from '@/features/order/orderApi'; // RTK Query hooks
 
 const StyledTableRow = styled(TableRow)(({ status }) => ({
     background: status === "REJECTED" ? "rgba(202, 31, 31, 0.2)" : status === "APPROVED" ? "rgba(45, 167, 45, 0.2)": "none",
@@ -143,11 +144,27 @@ export const OrdersList = ({ isAdmin }) => {
     const [rowsPerPage, setRowsPerPage] = React.useState(5);
     const [isModalOpen, setIsModalOpen] = React.useState(false);
     const [message, setMessage] = React.useState("Pas de commentaire");
-    const [selectedOrder, setSelectedOrder] = React.useState(null)
-    const [selectedOrderStatus, setSelectedOrderStatus] = React.useState(null)
-    const orders = isAdmin ? useSelector(selectAdminOrders) : useSelector(selectOrders)
+    const [selectedOrder, setSelectedOrder] = React.useState(null) // This state is for the modal
+    const [selectedOrderStatus, setSelectedOrderStatus] = React.useState(null) // This state is for the modal
 
     const theme = React.useContext(ThemeContext)
+    // const dispatch = useDispatch() // Keep if other actions are dispatched, remove if only setAdminOrders was used
+
+    const queryParams = { page: page + 1, per_page: rowsPerPage }; // API pagination is often 1-based
+
+    const { 
+        data: ordersData, 
+        isLoading, 
+        isError, 
+        error 
+    } = isAdmin 
+        ? useGetAdminOrdersQuery(queryParams, { refetchOnMountOrArgChange: true }) 
+        : useGetOrdersQuery(queryParams, { refetchOnMountOrArgChange: true });
+    
+    const orders = ordersData?.items || []; // Adjust based on actual API response structure
+    const totalOrdersCount = ordersData?.total || 0; // Adjust for total count for pagination
+
+    const [updateOrderStatus, { isLoading: isUpdatingStatus }] = useUpdateOrderStatusMutation();
 
 
     const handleChangePage = (event, newPage) => {
@@ -164,15 +181,16 @@ export const OrdersList = ({ isAdmin }) => {
     }
 
     const validateOrRefuseOrder = ({ order, status }) => {
-        axios.patch(`/orders/${order.public_id}`, {status, message}).then(response => {
-            const updatedOrder = response.data.data
-            const updatedOrders = orders.map(o => o.id === updatedOrder.id ? updatedOrder : o)
-            dispatch(setAdminOrders(updatedOrders))
-            setMessage("Pas de commentaire")
-            setIsModalOpen(false)
-        }).catch(error => {
-            toast.error("Erreur lors de la modification de la commande")
-        })
+        updateOrderStatus({ public_id: order.public_id, status, message }) // Assuming API uses public_id
+          .unwrap()
+          .then(() => { // updatedOrder is implicitly handled by cache invalidation
+            setMessage("Pas de commentaire");
+            setIsModalOpen(false);
+            toast.success("Statut de la commande mis à jour.");
+          })
+          .catch((err) => {
+            toast.error(err?.data?.message || "Erreur lors de la modification de la commande");
+          });
     }
 
     const getOrderPrice = (order) => {
@@ -235,9 +253,9 @@ export const OrdersList = ({ isAdmin }) => {
                     </TableRow>
                 </TableHead>
                 <TableBody>
-                    {orders
-                        .slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
-                        .map((order, rowIndex) => {
+                    {isLoading && <TableRow><TableCell colSpan={columns.length + 2}>Chargement...</TableCell></TableRow>}
+                    {isError && <TableRow><TableCell colSpan={columns.length + 2}>Erreur: {error?.data?.message || error?.message || 'Erreur de chargement des commandes'}</TableCell></TableRow>}
+                    {!isLoading && !isError && orders.map((order, rowIndex) => {
                             const date = new Date(order.created_at);
                             const offset = date.getTimezoneOffset();
                             const localDate = new Date(date.getTime() - offset * 60000);
@@ -307,9 +325,9 @@ export const OrdersList = ({ isAdmin }) => {
                 <TableFooter>
                     <TableRow>
                         <TablePagination
-                            rowsPerPageOptions={[5, 10, 25, { label: 'All', value: orders.length }]}
-                            colSpan={3}
-                            count={orders.length}
+                            rowsPerPageOptions={[5, 10, 25, { label: 'All', value: totalOrdersCount }]}
+                            colSpan={columns.length + 2} // Adjusted colSpan
+                            count={totalOrdersCount} // Use total count from API
                             rowsPerPage={rowsPerPage}
                             page={page}
                             slotProps={{
@@ -343,11 +361,13 @@ export const OrdersList = ({ isAdmin }) => {
                             isAdmin ? (
                                 <>
                                 <Button onClick={closeModal} color={"primary"} onClick={closeModal}>Fermer</Button>
-                                <Button 
-                                    onClick={closeModal}
+                                <Button
                                     color={selectedOrderStatus === "APPROVED" ? "success" : "danger"}
                                     onClick={() => validateOrRefuseOrder({order: selectedOrder, status: selectedOrderStatus})}
-                                >{selectedOrderStatus === "APPROVED" ? "Valider" : "Refuser"}</Button>
+                                    disabled={isUpdatingStatus}
+                                >
+                                    {isUpdatingStatus ? "Modification..." : (selectedOrderStatus === "APPROVED" ? "Valider" : "Refuser")}
+                                </Button>
                                 </>
                             ) : (
                                 // <Typography id="modal-modal-description" sx={{ mt: 2 }}>

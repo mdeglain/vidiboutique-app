@@ -1,6 +1,8 @@
 import { combineReducers, configureStore } from "@reduxjs/toolkit";
 import { persistReducer, persistStore } from "redux-persist";
 import storage from "redux-persist/lib/storage";
+import { setupListeners } from '@reduxjs/toolkit/query';
+import { apiSlice } from './api';
 
 import authReducer from "@/features/auth/auth.slice";
 import userReducer from "@/features/auth/user.slice";
@@ -28,6 +30,7 @@ const rootReducer = combineReducers({
     address: addressReducer,
     orders: ordersReducer,
     defaultOrder: defaultOrderReducer,
+    [apiSlice.reducerPath]: apiSlice.reducer,
 });
 
 const persistedReducer = persistReducer(persistConfig, rootReducer);
@@ -35,5 +38,9 @@ const persistedReducer = persistReducer(persistConfig, rootReducer);
 export const store = configureStore({
     devTools: process.env.NODE_ENV !== "production",
     reducer: persistedReducer,
+    middleware: (getDefaultMiddleware) =>
+        getDefaultMiddleware().concat(apiSlice.middleware),
 });
 export const persistor = persistStore(store);
+
+setupListeners(store.dispatch);
