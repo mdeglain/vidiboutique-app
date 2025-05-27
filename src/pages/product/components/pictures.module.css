@@ -1,0 +1,21 @@
+.ArrowLeft {
+    position: absolute;
+    right: 1px;
+    top: 1px;
+    margin: auto;
+    width: 20px;
+    height: 20px;
+}
+
+.ArrowRight {
+    position: absolute;
+    left: 1px;
+    top: 1px;
+    margin: auto;
+    width: 20px;
+    height: 20px;
+}
+
+.Img {
+    padding: 40px;
+}

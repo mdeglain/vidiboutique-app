@@ -1,0 +1,10 @@
+version: "3.8"
+
+services:
+  app:
+    container_name: vidiboutique-webapp
+    build:
+      context: .
+    image: vidiboutique-webapp
+    ports:
+      - 8080:80
