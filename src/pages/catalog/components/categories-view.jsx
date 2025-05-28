@@ -1,9 +1,10 @@
-import React, { useContext, useEffect, useState } from "react";
-import { useSelector } from "react-redux";
-import styled from "styled-components"
+import React, { useEffect, useState } from "react"; // Removed useContext as it's not used
+import { useSelector, useDispatch } from "react-redux"; // Keep useDispatch
+import styled from "styled-components";
+import { CircularProgress, Typography } from "@mui/material"; // For loading/error states
 
-import { useDispatch } from "react-redux"
-import { setActiveCategoryId as setActiveCategoryIdStore } from "@/features/filter/filter.slice"
+import { useGetCategoriesQuery } from "@/features/category/categoryApi"; // RTK Query hook
+import { setActiveCategoryId as setActiveCategoryIdStore } from "@/features/filter/filter.slice";
 
 
 const Title = styled.div`
@@ -32,70 +33,97 @@ const Container = styled.div`
 `
 
 export const CategoriesView = () => {
-    const dispath = useDispatch()
-    const categories = useSelector(state => state.category.categories)
-    const activeCategoryId = useSelector(state => state.filter.activeCategoryId)
+    const dispatch = useDispatch(); // Corrected variable name from dispath to dispatch
+    const activeCategoryId = useSelector(state => state.filter.activeCategoryId);
 
-    const [categoriesTree, setCategoriesTree] = useState({})
+    const { data: categoriesData, isLoading, isError, error } = useGetCategoriesQuery();
+    const categories = categoriesData?.data || []; // Adjust based on actual API response
+
+    const [categoriesTree, setCategoriesTree] = useState({});
 
     const setActiveCategoryId = (categoryId) => {
-        dispath(setActiveCategoryIdStore(categoryId))
+        dispatch(setActiveCategoryIdStore(categoryId));
     }
 
+    // Ensure categories is populated before attempting to build the tree
     const getParentsIds = () => {
-        const parentsIds = []
-        let currentCategoryId = activeCategoryId
+        if (!categories || categories.length === 0) return [];
+        const parentsIds = [];
+        let currentCategoryId = activeCategoryId;
         while (currentCategoryId !== null) {
-            const currentCategory = categories.find(category => category.id === currentCategoryId)
-            parentsIds.push(currentCategory.id)
-            currentCategoryId = currentCategory.main_category_id
+            const currentCategory = categories.find(category => category.id === currentCategoryId);
+            if (!currentCategory) break; // Category not found, break loop
+            parentsIds.push(currentCategory.id);
+            currentCategoryId = currentCategory.main_category_id;
         }
-        return parentsIds.reverse()
+        return parentsIds.reverse();
     }
 
     const formatCategories = (parentsIds, categoryId, shouldStop = false) => {
-        const category = categories.find(category => category?.id === categoryId);
+        if (!categories || categories.length === 0) return { id: categoryId, name: null, children: [] };
+        const category = categories.find(cat => cat?.id === categoryId);
+
+        if (!category) return { id: categoryId, name: 'Catégorie inconnue', children: [] }; // Handle case where category might not be found
 
         if (shouldStop) {
             return {
                 id: categoryId,
                 name: category.name,
                 children: []
-            }
+            };
         }
 
-        let children = categories.filter(category => category.main_category_id === categoryId);
+        let children = categories.filter(cat => cat.main_category_id === categoryId);
 
         if (children.length !== 0) {
-            const childrenFiltered = children.filter(child => parentsIds.includes(child.id))
+            const childrenFiltered = children.filter(child => parentsIds.includes(child.id));
             if (childrenFiltered.length !== 0) {
-                children = childrenFiltered
+                children = childrenFiltered;
             }
         }
 
         return {
             id: categoryId,
-            name: category ? category.name : null,
+            name: category.name,
             children: children.map(child => formatCategories(parentsIds, child.id, (categoryId === activeCategoryId)))
         };
     }
 
     const getCategoriesTreeToDisplay = () => {
-        const parentsIds = getParentsIds()
-        return formatCategories(parentsIds, parentsIds[0] || activeCategoryId)
+        if (!categories || categories.length === 0 || activeCategoryId === undefined) return {}; // Guard against undefined activeCategoryId for initial load
+        const parentsIds = getParentsIds();
+        if (parentsIds.length === 0 && activeCategoryId !== null) { // If activeId is set but no parents (e.g. top level, or bad ID)
+            const activeCat = categories.find(c => c.id === activeCategoryId);
+            if (activeCat) return formatCategories([activeCategoryId], activeCategoryId); // Build tree for only this cat
+            return {}; // Or handle as error/empty
+        }
+        if (parentsIds.length === 0 && activeCategoryId === null) { // "Toutes les catégories" is active
+             // Display all top-level categories
+            const topLevelCategories = categories.filter(c => c.main_category_id === null);
+            return {
+                id: null, // Virtual root
+                name: "Toutes les catégories",
+                children: topLevelCategories.map(child => formatCategories([], child.id, false)) // Build shallow tree for top levels
+            };
+        }
+        return formatCategories(parentsIds, parentsIds[0] || activeCategoryId);
     }
-
+    
     useEffect(() => {
-        setCategoriesTree(getCategoriesTreeToDisplay())
-    }, [activeCategoryId])
+        if (categories && categories.length > 0) { // Ensure categories are loaded
+            setCategoriesTree(getCategoriesTreeToDisplay());
+        }
+    }, [activeCategoryId, categories]); // Add categories to dependency array
 
     const displayCategories = (category, depth = 0) => {
+        if (!category || !category.id && category.name !== "Toutes les catégories") return null; // Don't render if category is null or invalid (unless it's the virtual root)
+        
         return (
             <React.Fragment>
-                {category.id ? <Category style={{ paddingLeft: `calc(8px + ${depth} * 15px)`, fontWeight: category.id === activeCategoryId ? 'bold' : 'normal' }} onClick={() => setActiveCategoryId(category.id)}>{category.name}</Category> : null}
-                {category.children.map(child => displayCategories(child, depth + 1))}
+                {category.id && <Category style={{ paddingLeft: `calc(8px + ${depth} * 15px)`, fontWeight: category.id === activeCategoryId ? 'bold' : 'normal' }} onClick={() => setActiveCategoryId(category.id)}>{category.name}</Category>}
+                {category.children && category.children.map(child => displayCategories(child, depth + (category.id === null ? 0 : 1)))} 
             </React.Fragment>
-        )
+        );
     }
 
     return (

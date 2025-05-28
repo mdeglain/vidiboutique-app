@@ -39,6 +39,14 @@ export const defaultOrderApi = apiSlice.injectEndpoints({
       }),
       invalidatesTags: (result, error, id) => [{ type: 'DefaultOrder', id }, { type: 'DefaultOrder', id: 'LIST' }],
     }),
+    addItemToDefaultOrderList: builder.mutation({
+      query: ({ orderPublicId, itemData }) => ({ // itemData: { product_id, quantity }
+        url: `/default-orders/${orderPublicId}/items`,
+        method: 'POST',
+        body: itemData,
+      }),
+      invalidatesTags: (result, error, { orderPublicId }) => [{ type: 'DefaultOrder', id: orderPublicId }, { type: 'DefaultOrder', id: 'LIST' }],
+    }),
   }),
 });
 
@@ -48,4 +56,5 @@ export const {
   useGetDefaultOrderByIdQuery,
   useUpdateDefaultOrderMutation,
   useDeleteDefaultOrderMutation,
+  useAddItemToDefaultOrderListMutation, // Export the new hook
 } = defaultOrderApi;

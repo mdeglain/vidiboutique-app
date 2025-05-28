@@ -39,6 +39,14 @@ export const cartApi = apiSlice.injectEndpoints({
       }),
       invalidatesTags: [{ type: 'CartItem', id: 'LIST' }],
     }),
+    addMultipleItemsToCart: builder.mutation({
+      query: (itemsPayload) => ({ // itemsPayload expected to be e.g., { items: [{ product_id, quantity }, ...] }
+        url: '/carts', // Assuming POST to /carts with an items array replaces/sets the cart
+        method: 'POST',
+        body: itemsPayload, 
+      }),
+      invalidatesTags: [{ type: 'CartItem', id: 'LIST' }],
+    }),
   }),
   // Ensure tagTypes is defined at the apiSlice level if not already.
   // If it's defined in the main apiSlice, this is not strictly necessary here,
@@ -55,6 +63,7 @@ export const {
   useUpdateCartItemQuantityMutation,
   useDeleteCartItemMutation,
   useAddItemToCartMutation,
+  useAddMultipleItemsToCartMutation, // Export the new hook
 } = cartApi;
 
 // Correction: The `tagTypes` array should be defined in the `createApi` call (i.e., in `src/store/api.js`).

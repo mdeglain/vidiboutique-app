@@ -17,7 +17,7 @@ import { LoginModal } from './components';
 
 import { Router } from "./Router"
 import { SearchRedirect } from './components/search-component/search-component';
-import { injectStore } from './libs/axios';
+// import { injectStore } from './libs/axios'; // Removed as axios.js is deleted
 
 import { GetDefaultData } from './components/get-default-data/get-default-data';
 import { Toaster } from 'react-hot-toast';
@@ -44,7 +44,7 @@ const app = () => {
 
     const { theme, themeLoaded, getFonts } = useTheme();
     const [selectedTheme, setSelectTheme] = useState(theme);
-    injectStore(store);
+    // injectStore(store); // Removed
 
     useEffect(() => {
         setSelectTheme(theme);

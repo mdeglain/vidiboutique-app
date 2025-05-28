@@ -9,12 +9,20 @@ import { useNavigate } from "react-router-dom";
 
 
 import { selectIsAuth } from "@/features/auth/auth.selector"
+import { 
+    useGetDefaultOrdersQuery, 
+    useAddItemToDefaultOrderListMutation 
+} from "@/features/default-order/defaultOrderApi"; 
+import { 
+    useAddFavoriteMutation, 
+    useRemoveFavoriteMutation 
+} from "@/features/favorite/favoriteApi"; // RTK Query hooks for favorites
 
 import { eur } from "@/utils/format"
-import axios from "@/libs/axios"
-import { selectDefaultOrders } from "@/features/default-order/default-order.selector"
+import axios from "@/libs/axios"; // Keep for other axios calls if any, or remove if all are gone
+// import { selectDefaultOrders } from "@/features/default-order/default-order.selector"; 
 import toast from "react-hot-toast"
-import { addItemToDefaultOrder } from "@/features/default-order/default-order.slice"
+// import { addItemToDefaultOrder } from "@/features/default-order/default-order.slice"; // Removed
 
 
 const Container = styled.div`
@@ -160,39 +168,66 @@ export const Product = ({ product, updateProducts }) => {
     const navigate = useNavigate();
     const isAuth = useSelector(selectIsAuth)
     const [anchorEl, setAnchorEl] = useState(null);
-    const defaultOrders = useSelector(selectDefaultOrders)
+
+    const { data: defaultOrdersData } = useGetDefaultOrdersQuery(undefined, { skip: !isAuth });
+    const defaultOrders = defaultOrdersData || [];
+    const [addItemToOrderCatalog, { isLoading: isAddingToOrderCatalog }] = useAddItemToDefaultOrderListMutation();
+    const [addFavorite, { isLoading: isAddingFavorite }] = useAddFavoriteMutation();
+    const [removeFavorite, { isLoading: isRemovingFavorite }] = useRemoveFavoriteMutation();
 
     const onProductClick = () => {
         navigate(`/products/${product.public_id}`)
     }
 
     const onFavoriteClick = (e) => {
-        e.stopPropagation()
-        
+        e.stopPropagation();
+        if (!isAuth) {
+            toast.error("Veuillez vous connecter pour gérer vos favoris.");
+            return;
+        }
+        const currentProductId = product.id; 
+
         if (product.is_favorite) {
-            axios.delete("/users-favorite-products", { data: { product_id: product.id } })
-            .then(_ => {
-                updateProducts({ id: product.id, newProduct: { ...product, is_favorite: false } })
-            })
+            removeFavorite({ product_id: currentProductId })
+                .unwrap()
+                .then(() => {
+                    toast.success("Produit retiré des favoris");
+                    // updateProducts is removed, relying on tag invalidation
+                })
+                .catch((err) => {
+                    toast.error(err?.data?.message || "Erreur lors du retrait des favoris");
+                });
         } else {
-            axios.post("/users-favorite-products", { product_id: product.id })
-            .then(_ => {
-                updateProducts({ id: product.id, newProduct: { ...product, is_favorite: true } })
-            })
+            addFavorite({ product_id: currentProductId })
+                .unwrap()
+                .then(() => {
+                    toast.success("Produit ajouté aux favoris");
+                    // updateProducts is removed, relying on tag invalidation
+                })
+                .catch((err) => {
+                    toast.error(err?.data?.message || "Erreur lors de l'ajout aux favoris");
+                });
         }
     }
 
     const addToDefaultOrder = (order) => {
-        axios.post(`/default-orders/${order.public_id}/items`, {
-            product_id: product.id,
-            quantity: 1
-        }).then(response => {
-            dispatch(addItemToDefaultOrder({ orderId: order.public_id, item: response.data.data}))
-            setAnchorEl(null)
-            toast.success("Produit ajouté au panier")
-        }).catch(error => {
-            toast.error("Ce produit est déjà dans cette commande")
+        addItemToOrderCatalog({
+            orderPublicId: order.public_id,
+            itemData: { product_id: product.id, quantity: 1 } // Assuming quantity 1 when adding from catalog
         })
+            .unwrap()
+            .then(() => {
+                setAnchorEl(null);
+                toast.success("Produit ajouté à la commande par défaut");
+            })
+            .catch((err) => {
+                // Check if the error message indicates the product is already in the order
+                if (err?.data?.message?.toLowerCase().includes("product already in default order")) {
+                     toast.error("Ce produit est déjà dans cette commande.");
+                } else {
+                    toast.error(err?.data?.message || "Erreur lors de l'ajout");
+                }
+            });
     }
 
     return (
@@ -204,13 +239,22 @@ export const Product = ({ product, updateProducts }) => {
                         <Img src={product.image_link} />
                     </ImageWrapper>
                     <ActionsButton>
-                        <IconButton style={{ width: 40, height: 40 }} onClick={e => onFavoriteClick(e)}>
-                            {product.is_favorite ? <MuiFillHeart /> : <MuiOutlineHeart />}
+                        <IconButton 
+                            style={{ width: 40, height: 40 }} 
+                            onClick={onFavoriteClick} // Updated handler
+                            disabled={!isAuth || isAddingFavorite || isRemovingFavorite}
+                        >
+                            {isAddingFavorite || isRemovingFavorite ? <muiStyled(CircularProgress)(() => ({ color: 'white' })) size={22} /> : (product.is_favorite ? <MuiFillHeart /> : <MuiOutlineHeart />)}
                         </IconButton>
-                        <IconButton style={{ width: 40, height: 40 }} onClick={e => {
-                            e.stopPropagation()
-                            setAnchorEl(e.currentTarget)
-                        }}>
+                        <IconButton 
+                            style={{ width: 40, height: 40 }} 
+                            onClick={e => {
+                                e.stopPropagation();
+                                if (isAuth) setAnchorEl(e.currentTarget); // Only open popover if authenticated
+                                else toast.error("Veuillez vous connecter pour utiliser cette fonctionnalité.");
+                            }}
+                            // disabled={!isAuth} // Alternative: disable button if not auth
+                        >
                             <MuiAiOutlineOrderedList />
                         </IconButton>
                     </ActionsButton>
@@ -226,24 +270,35 @@ export const Product = ({ product, updateProducts }) => {
                 </Informations>
             </InnerContainer>
             <Popover
-                // id={id}
-                open={Boolean(anchorEl)}
-                anchorEl={anchorEl}
-                onClose={() => setAnchorEl(null)}
-                anchorOrigin={{
-                    vertical: 'bottom',
-                    horizontal: 'left',
-                }}
+                    open={Boolean(anchorEl) && isAuth} // Ensure popover only opens if authenticated
+                    anchorEl={anchorEl}
+                    onClose={(e) => {
+                        if (e && e.stopPropagation) e.stopPropagation(); // Prevent product click when closing popover
+                        setAnchorEl(null);
+                    }}
+                    anchorOrigin={{
+                        vertical: 'bottom',
+                        horizontal: 'left',
+                    }}
                 >
                     <PopoverContent>
+                        {defaultOrders.length === 0 && <div style={{ padding: '5px', fontSize: '0.8rem' }}>Aucune commande par défaut.</div>}
                         {defaultOrders.map(order => (
-                            <PopoverElement key={order.public_id} onClick={(e) => {
-                                e.stopPropagation()
-                                addToDefaultOrder(order)
-                            }}>{order.name}</PopoverElement>
+                            <PopoverElement 
+                                key={order.public_id} 
+                                onClick={(e) => {
+                                    e.stopPropagation(); // Prevent product click
+                                    addToDefaultOrder(order);
+                                }}
+                                disabled={isAddingToOrderCatalog}
+                            >
+                                {isAddingToOrderCatalog && order.public_id === (anchorEl?.dataset?.orderId) // Basic check, might need refinement
+                                    ? `Ajout...` 
+                                    : order.name}
+                            </PopoverElement>
                         ))}
                     </PopoverContent>
-            </Popover>
+                </Popover>
         </Container>
     )
 }

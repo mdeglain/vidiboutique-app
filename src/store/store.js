@@ -7,9 +7,9 @@ import { apiSlice } from './api';
 import authReducer from "@/features/auth/auth.slice";
 import userReducer from "@/features/auth/user.slice";
 import filterReducer from "@/features/filter/filter.slice";
-import categoryReducer from "@/features/category/category.slice";
+// import categoryReducer from "@/features/category/category.slice"; // Removed
 import searchReducer from "@/features/search/search.slice";
-import basketReducer from "@/features/basket/basket.slice";
+// import basketReducer from "@/features/basket/basket.slice"; // Removed
 // import addressReducer from "@/features/address/address.slice"; // Removed
 // import ordersReducer from "@/features/orders/orders.slice"; // Removed
 // import defaultOrderReducer from "@/features/default-order/default-order.slice"; // Removed
@@ -24,9 +24,9 @@ const rootReducer = combineReducers({
     auth: authReducer,
     user: userReducer,
     filter: filterReducer,
-    category: categoryReducer,
+    // category: categoryReducer, // Removed
     search: searchReducer,
-    basket: basketReducer,
+    // basket: basketReducer, // Removed
     // address: addressReducer, // Removed
     // orders: ordersReducer, // Removed
     // defaultOrder: defaultOrderReducer, // Removed

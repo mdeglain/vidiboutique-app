@@ -48,7 +48,10 @@ export const orderApi = apiSlice.injectEndpoints({
         method: 'POST',
         body: newOrderData,
       }),
-      invalidatesTags: [{ type: 'Order', id: 'LIST' }], 
+      invalidatesTags: (result, error, arg) => [
+        { type: 'Order', id: 'LIST' }, 
+        { type: 'CartItem', id: 'LIST' }
+      ], 
     }),
   }),
 });

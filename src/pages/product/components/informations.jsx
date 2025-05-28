@@ -10,15 +10,24 @@ import { FaListUl } from "react-icons/fa";
 import { MdFormatListBulleted } from "react-icons/md";
 import { AiOutlineOrderedList } from "react-icons/ai";
 
-import axios from "@/libs/axios";
+import axios from "@/libs/axios"; // Keep for other axios calls if any, or remove if all are gone. For now, only removing favorite usage.
 
-import { addProduct } from "@/features/basket/basket.slice"
+// import { addProduct } from "@/features/basket/basket.slice"; 
 import { selectIsAuth } from "@/features/auth/auth.selector";
+import { 
+    useGetDefaultOrdersQuery, 
+    useAddItemToDefaultOrderListMutation 
+} from "@/features/default-order/defaultOrderApi"; 
+import { useAddItemToCartMutation } from "@/features/cart/cartApi"; 
+import { 
+    useAddFavoriteMutation, 
+    useRemoveFavoriteMutation 
+} from "@/features/favorite/favoriteApi"; // RTK Query hooks for favorites
 
-import { eur } from "@/utils/format"
+import { eur } from "@/utils/format";
 import toast from "react-hot-toast";
-import { selectDefaultOrders } from "@/features/default-order/default-order.selector";
-import { addItemToDefaultOrder } from "@/features/default-order/default-order.slice";
+// import { selectDefaultOrders } from "@/features/default-order/default-order.selector"; // Removed
+// import { addItemToDefaultOrder } from "@/features/default-order/default-order.slice"; // Removed
 
 
 const Container = styled("div")({
@@ -211,52 +220,83 @@ const PopoverElement = styled('li')(({ theme }) => ({
 
 export const Informations = ({ product, setProduct }) => {
     const isAuth = useSelector(selectIsAuth)
-    const defaultOrders = useSelector(selectDefaultOrders)
-    const dispatch = useDispatch()
+    // const defaultOrdersOld = useSelector(selectDefaultOrders) // Removed
+    // const dispatch = useDispatch() // Keep for cart - No longer needed if addProduct is removed
+    const dispatch = useDispatch() 
+    
+    const { data: defaultOrdersData } = useGetDefaultOrdersQuery(undefined, { skip: !isAuth }); 
+    const defaultOrders = defaultOrdersData || [];
+    const [addItemToOrder, { isLoading: isAddingToOrder }] = useAddItemToDefaultOrderListMutation();
+    const [addItemToCart, { isLoading: isAddingToCart }] = useAddItemToCartMutation();
+    const [addFavorite, { isLoading: isAddingFavorite }] = useAddFavoriteMutation();
+    const [removeFavorite, { isLoading: isRemovingFavorite }] = useRemoveFavoriteMutation();
 
     const [numberOfItems, setNumberOfItems] = useState(1)
     const [anchorEl, setAnchorEl] = useState(null);
 
 
-    const addToCard = () => {
-        axios.post("/carts-items", {
-            public_id: product.public_id,
+    const handleAddToCart = () => { // Renamed from addToCard to avoid conflict if any
+        addItemToCart({
+            public_id: product.public_id, // Assuming API expects public_id for the product
             quantity: numberOfItems
-        }).then(response => {
-            dispatch(addProduct(response.data.data))
-            toast.success("Produit ajouté au panier")
         })
+            .unwrap()
+            .then(() => {
+                toast.success("Produit ajouté au panier");
+                // Invalidation via tags in cartApi should refresh cart data elsewhere
+            })
+            .catch((err) => {
+                toast.error(err?.data?.message || "Erreur lors de l'ajout au panier");
+            });
     }
 
     const onFavoriteClick = (e) => {
-        e.stopPropagation()
-        
-        if (product.is_favorite) {
-            axios.delete("/users-favorite-products", { data: { product_id: product.id } })
-            .then(_ => {
-                setProduct({...product, is_favorite: false })
-            })
-        } else {
-            axios.post("/users-favorite-products", { product_id: product.id })
-            .then(_ => {
-                setProduct({...product, is_favorite: true })
-            })
+        e.stopPropagation();
+        if (!isAuth) {
+            toast.error("Veuillez vous connecter pour gérer vos favoris.");
+            return;
         }
-        // axios.
+
+        const currentProductId = product.id; // Or product.public_id depending on what API expects
+
+        if (product.is_favorite) {
+            removeFavorite({ product_id: currentProductId })
+                .unwrap()
+                .then(() => {
+                    toast.success("Produit retiré des favoris");
+                    // setProduct({...product, is_favorite: false }); // Rely on tag invalidation
+                })
+                .catch((err) => {
+                    toast.error(err?.data?.message || "Erreur lors du retrait des favoris");
+                });
+        } else {
+            addFavorite({ product_id: currentProductId })
+                .unwrap()
+                .then(() => {
+                    toast.success("Produit ajouté aux favoris");
+                    // setProduct({...product, is_favorite: true }); // Rely on tag invalidation
+                })
+                .catch((err) => {
+                    toast.error(err?.data?.message || "Erreur lors de l'ajout aux favoris");
+                });
+        }
     }
 
     const addToDefaultOrder = (order) => {
-        axios.post(`/default-orders/${order.public_id}/items`, {
-            product_id: product.id,
-            quantity: numberOfItems
-        }).then(response => {
-            dispatch(addItemToDefaultOrder({ orderId: order.public_id, item: response.data.data}))
-            setAnchorEl(null)
-            toast.success("Produit ajouté au panier")
-        }).catch(error => {
-            toast.error("Une erreur est survenue")
+        addItemToOrder({ 
+            orderPublicId: order.public_id, 
+            itemData: { product_id: product.id, quantity: numberOfItems } 
         })
+            .unwrap()
+            .then(() => {
+                setAnchorEl(null);
+                toast.success("Produit ajouté à la commande par défaut");
+            })
+            .catch((err) => {
+                toast.error(err?.data?.message || "Erreur lors de l'ajout");
+            });
     }
+
     return (
         <Container>
             <Title>{product.name}</Title>
@@ -285,35 +325,53 @@ export const Informations = ({ product, setProduct }) => {
                             setNumberOfItems(parseInt(e.target.value))
                         }
                     }} />
-                    <Plus onClick={() => setNumberOfItems(numberOfItems + 1)}><FaPlus /></Plus>
+                    <Plus onClick={() => setNumberOfItems(numberOfItems + 1)} disabled={isAddingToCart}><FaPlus /></Minus>
                 </NumberOfItemsContainer>
-                {product.is_available ? <AddToCart onClick={addToCard}>Ajouter au panier</AddToCart> : <AddToCart disabled>Produit indisponible</AddToCart>}
+                {product.is_available ? 
+                    <AddToCart onClick={handleAddToCart} disabled={isAddingToCart || !isAuth}>
+                        {isAddingToCart ? "Ajout..." : "Ajouter au panier"}
+                    </AddToCart> 
+                    : <AddToCart disabled>Produit indisponible</AddToCart>}
                 <FavoriteContainer>
-                    <IconButton style={{ width: 40, height: 40 }} onClick={e => onFavoriteClick(e)}>
-                        {product.is_favorite ? <MuiFillHeart /> : <MuiOutlineHeart />}
+                    <IconButton 
+                        style={{ width: 40, height: 40 }} 
+                        onClick={onFavoriteClick} // Updated handler
+                        disabled={!isAuth || isAddingFavorite || isRemovingFavorite}
+                    >
+                        {isAddingFavorite || isRemovingFavorite ? <CircularProgress size={24} /> : (product.is_favorite ? <MuiFillHeart /> : <MuiOutlineHeart />)}
                     </IconButton>
                 </FavoriteContainer>
                 <FavoriteContainer>
-                    <IconButton style={{ width: 40, height: 40 }} onClick={e => setAnchorEl(e.currentTarget)}>
+                    <IconButton 
+                        style={{ width: 40, height: 40 }} 
+                        onClick={e => setAnchorEl(e.currentTarget)}
+                        disabled={!isAuth} // Disable if not authenticated
+                    >
                         <MuiAiOutlineOrderedList />
                     </IconButton>
                 </FavoriteContainer>
             </Actions>
             <Popover
-                // id={id}
-                open={Boolean(anchorEl)}
+                open={Boolean(anchorEl) && isAuth} // Only open if authenticated
                 anchorEl={anchorEl}
                 onClose={() => setAnchorEl(null)}
                 anchorOrigin={{
                     vertical: 'bottom',
                     horizontal: 'left',
                 }}
-                >
-                    <PopoverContent>
-                        {defaultOrders.map(order => (
-                            <PopoverElement key={order.public_id} onClick={() => addToDefaultOrder(order)}>{order.name}</PopoverElement>
-                        ))}
-                    </PopoverContent>
+            >
+                <PopoverContent>
+                    {defaultOrders.length === 0 && <Typography sx={{ p: 1, fontSize: '0.8rem' }}>Aucune commande par défaut.</Typography>}
+                    {defaultOrders.map(order => (
+                        <PopoverElement 
+                            key={order.public_id} 
+                            onClick={() => addToDefaultOrder(order)}
+                            disabled={isAddingToOrder} // Disable while adding
+                        >
+                            {isAddingToOrder ? `Ajout à ${order.name}...` : order.name}
+                        </PopoverElement>
+                    ))}
+                </PopoverContent>
             </Popover>
         </Container>
     )

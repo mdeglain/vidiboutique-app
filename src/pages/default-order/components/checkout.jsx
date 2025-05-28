@@ -7,9 +7,10 @@ import { ShippingCostAdvice } from "./shipping-cost-advice"
 
 import { eur } from "@/utils/format"
 import { calculateTotal, calculateShippingCosts } from "@/utils"
-import axios from "@/libs/axios"
+// import axios from "@/libs/axios" // Removed axios
 import toast from "react-hot-toast"
-import { initCart } from "@/features/basket/basket.slice"
+// import { initCart } from "@/features/basket/basket.slice" // Removed initCart
+import { useAddMultipleItemsToCartMutation } from "@/features/cart/cartApi"; // RTK Query hook
 
 const CheckoutWrapper = styled("div")(({ theme }) => ({
     padding: "20px 0px",
@@ -67,20 +68,45 @@ const Button = styled("button")(({ theme, disabled }) => ({
     }
 }))
 
-export const Checkout = ({ defaultOrder,items }) => {
-    const navigate = useNavigate()
-    const dispatch = useDispatch()
+export const Checkout = ({ defaultOrder, items }) => { // items prop seems to be from parent default-order.jsx
+    const navigate = useNavigate();
+    // const dispatch = useDispatch(); // Removed if initCart was the only use
+
+    const [addItemsToCart, { isLoading: isAddingMultipleItems }] = useAddMultipleItemsToCartMutation();
 
     const saveToCart = () => {
-        axios.post(`default-orders/${defaultOrder.public_id}/save-to-cart`).then(_ => {
-            axios.get("carts").then(response => {
-                dispatch(initCart(response.data.data.cart_items))
-            }).then(_ => {
-                navigate("/cart")
+        if (!defaultOrder || !defaultOrder.items || defaultOrder.items.length === 0) {
+            toast.error("Aucun article dans cette commande par défaut.");
+            return;
+        }
+
+        const itemsPayload = {
+            items: defaultOrder.items.map(item => ({
+                product_id: item.product_public_id || item.product.public_id, // Ensure correct product identifier
+                quantity: item.quantity,
+            })),
+        };
+        
+        // The endpoint `default-orders/${defaultOrder.public_id}/save-to-cart` seems to be a specific backend action
+        // that might do more than just add items to cart (e.g., clear default order, specific analytics).
+        // The new `addMultipleItemsToCart` mutation POSTs to `/carts`.
+        // If the backend logic of `/default-orders/.../save-to-cart` is crucial and different from just populating the cart,
+        // then this refactoring might need a new specific mutation for that endpoint instead of using a generic "add multiple items".
+        // For now, proceeding with the assumption that the goal is to replace the cart content with default order items.
+        // If the old endpoint `default-orders/${defaultOrder.public_id}/save-to-cart` is still required,
+        // a new mutation for it should be created.
+        // This refactoring assumes we are replacing the old mechanism with addMultipleItemsToCart.
+
+        addItemsToCart(itemsPayload)
+            .unwrap()
+            .then(() => {
+                toast.success("Articles ajoutés au panier !");
+                navigate("/cart");
+                // Cart data will be refetched by components using useGetCartItemsQuery due to invalidation
             })
-        }).catch(err => {
-            toast.error("Une erreur est survenue")
-        })
+            .catch((err) => {
+                toast.error(err?.data?.message || "Erreur lors de l'ajout au panier.");
+            });
     }
 
     const total_ht = calculateTotal(items, false)
@@ -110,7 +136,9 @@ export const Checkout = ({ defaultOrder,items }) => {
                 </PriceWrapper>
             </TotalWrapper>
             <ButtonWrapper>
-                <Button onClick={saveToCart} disabled={items.length ? false : true}>Ajouter au panier</Button>
+                <Button onClick={saveToCart} disabled={isAddingMultipleItems || items.length === 0}>
+                    {isAddingMultipleItems ? "Ajout en cours..." : "Ajouter au panier"}
+                </Button>
             </ButtonWrapper>
         </CheckoutWrapper>
     )

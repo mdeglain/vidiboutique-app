@@ -80,7 +80,7 @@ export const Command = (props) => {
             .then((response) => { // Assuming response directly contains the order data (response.data from axios)
                 setIsModalOpen(false);
                 setRPPS("");
-                dispatch(resetCart());
+                // dispatch(resetCart()); // Removed - Cart invalidation should handle this
                 navigate("/confirmation", { state: { order: response } }); // RTK Query often returns the direct data
                 toast.success("Votre commande a bien été enregistrée");
             })
