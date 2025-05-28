@@ -8,5 +8,5 @@ export const apiSlice = createApi({
   reducerPath: 'api',
   baseQuery: fetchBaseQuery({ baseUrl }),
   endpoints: (builder) => ({}),
-  tagTypes: ['Auth', 'Product', 'Order', 'AdminOrder', 'Address', 'DefaultOrder'],
+  tagTypes: ['Auth', 'Product', 'Order', 'AdminOrder', 'Address', 'DefaultOrder', 'CartItem'],
 });

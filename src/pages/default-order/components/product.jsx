@@ -1,15 +1,15 @@
 import React from 'react'
 import { styled } from "@mui/material"
-import { useDispatch } from "react-redux"
+// import { useDispatch } from "react-redux" // Removed useDispatch
 
 import { FaMinus, FaPlus } from "react-icons/fa6";
 import { RiDeleteBinLine } from "react-icons/ri";
 
-import { deleteItemFromDefaultOrder, updateItemQuantity } from "@/features/default-order/default-order.slice"
+// import { deleteItemFromDefaultOrder, updateItemQuantity } from "@/features/default-order/default-order.slice" // Removed slice imports
 
 import { eur } from "@/utils/format"
-import axios from '@/libs/axios';
-import toast from 'react-hot-toast';
+// import axios from '@/libs/axios'; // Removed axios
+// import toast from 'react-hot-toast'; // Removed toast if not used directly for these actions
 import { useNavigate } from 'react-router-dom';
 
 const ProductWrapper = styled('div')({
@@ -170,45 +170,47 @@ const PriceTTC = styled("div")(({ theme }) => ({
     fontWeight: theme.fontWeights.bold,
 }))
 
-export const Product = ({ defaultOrder, item }) => {
-    const dispatch = useDispatch()
+// Changed props: removed defaultOrder, added onUpdateQuantity, onDelete
+export const Product = ({ item, onUpdateQuantity, onDelete }) => { 
     const navigate = useNavigate()
+    // const dispatch = useDispatch() // Removed
 
-    const deleteProduct_ = () => {
-        axios.delete(`/default-orders/${defaultOrder.public_id}/items/${item.public_id}`).then(_ => {
-            dispatch(deleteItemFromDefaultOrder({ orderId: defaultOrder.public_id, itemPublicId: item.public_id }))
-            toast.success("Produit supprimé du panier")
-        })
+    const handleDelete = () => {
+        onDelete(); // Call the onDelete prop passed from ProductList
     }
 
-    const setNumberOfItems = (numberOfItems) => {
-        axios.put(`/default-orders/${defaultOrder.public_id}/items/${item.public_id}`, { quantity: numberOfItems }).then(response => {
-            dispatch(updateItemQuantity({
-                defaultOrderPublicId: defaultOrder.public_id,
-                itemPublicId: response.data.item_public_id,
-                value: response.data.quantity
-            }))
-        })
+    const handleQuantityChange = (newQuantity) => {
+        if (newQuantity >= 1) { // Assuming quantity cannot be less than 1
+            onUpdateQuantity(newQuantity); // Call the onUpdateQuantity prop
+        }
     }
+
+    // Ensure item and item.product exist before trying to access their properties
+    if (!item || !item.product) {
+        // Optionally render a placeholder or return null if item data is incomplete
+        return <ProductWrapper>Produit non disponible ou données manquantes.</ProductWrapper>;
+    }
+    
     return (
         <ProductWrapper>
             <Img src={item.product.image_link} />
             <Description>
                 <LeftPart>
                     <Title onClick={() => navigate(`/products/${item.product.public_id}`)}>{item.product.name}</Title>
-                    <ShortDescription>{item.product.supplier.name}</ShortDescription>
+                    <ShortDescription>{item.product.supplier?.name || 'Fournisseur inconnu'}</ShortDescription>
                     <Actions>
                         <NumberOfItemsContainer>
-                            <Minus onClick={() => setNumberOfItems(item.quantity > 1 ? item.quantity - 1 : 1)}><FaMinus /></Minus>
+                            <Minus onClick={() => handleQuantityChange(item.quantity - 1)} disabled={item.quantity <= 1}><FaMinus /></Minus>
                             <NumberOfItems>{item.quantity}</NumberOfItems>
-                            <Plus onClick={() => setNumberOfItems(item.quantity + 1)}><FaPlus /></Plus>
+                            <Plus onClick={() => handleQuantityChange(item.quantity + 1)}><FaPlus /></Plus>
                         </NumberOfItemsContainer>
-                        <DeleteWrapper onClick={deleteProduct_}><RiDeleteBinLine /></DeleteWrapper>
+                        <DeleteWrapper onClick={handleDelete}><RiDeleteBinLine /></DeleteWrapper>
                     </Actions>
                 </LeftPart>
                 <Prices>
-                    <PriceHT>{`${eur(item.product.price * item.quantity)} HT`}</PriceHT>
-                    <PriceTTC>{eur(item.product.price * item.quantity * (1+ item.product.tva.value))} TTC</PriceTTC>
+                    {/* Ensure price and tva are numbers before calculation */}
+                    <PriceHT>{`${eur((item.product.price || 0) * (item.quantity || 0))} HT`}</PriceHT>
+                    <PriceTTC>{eur((item.product.price || 0) * (item.quantity || 0) * (1 + (item.product.tva?.value || 0)))} TTC</PriceTTC>
                 </Prices>
             </Description>
         </ProductWrapper>

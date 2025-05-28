@@ -1,14 +1,18 @@
 import React from 'react'
 import { styled } from "@mui/material"
-import { useDispatch } from "react-redux"
+// import { useDispatch } from "react-redux" // Removed useDispatch
 
 import { FaMinus, FaPlus } from "react-icons/fa6";
 import { RiDeleteBinLine } from "react-icons/ri";
 
-import { updateQuantity, deleteProduct } from "@/features/basket/basket.slice"
+// import { updateQuantity, deleteProduct } from "@/features/basket/basket.slice" // Removed slice imports
+import { 
+    useUpdateCartItemQuantityMutation, 
+    useDeleteCartItemMutation 
+} from "@/features/cart/cartApi"; // RTK Query hooks
 
 import { eur } from "@/utils/format"
-import axios from '@/libs/axios';
+// import axios from '@/libs/axios'; // Removed axios
 import toast from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
 
@@ -171,44 +175,60 @@ const PriceTTC = styled("div")(({ theme }) => ({
 }))
 
 export const Product = ({ cartItem }) => {
-    const dispatch = useDispatch()
-    const navigate = useNavigate()
+    const navigate = useNavigate();
+    // const dispatch = useDispatch(); // Removed
 
-    const updateQuantity_ = (quantity) => {
-        dispatch(updateQuantity(quantity))
-    }
+    const [updateItemQuantity, { isLoading: isUpdating }] = useUpdateCartItemQuantityMutation();
+    const [deleteItem, { isLoading: isDeleting }] = useDeleteCartItemMutation();
 
-    const deleteProduct_ = () => {
-        axios.delete(`/carts-items/${cartItem.public_id}`).then(_ => {
-            dispatch(deleteProduct(cartItem.public_id))
-            toast.success("Produit supprimé du panier")
-        })
-    }
+    const handleDelete = () => {
+        deleteItem(cartItem.public_id)
+            .unwrap()
+            .then(() => toast.success("Produit supprimé du panier"))
+            .catch(() => toast.error("Erreur lors de la suppression du produit"));
+    };
 
-    const setNumberOfItems = (numberOfItems) => {
-        axios.put(`/carts-items/${cartItem.public_id}`, { quantity: numberOfItems }).then(response => {
-            updateQuantity_({ publicId: cartItem.public_id, value: response.data.data })
-        })
+    const handleQuantityChange = (newQuantity) => {
+        if (newQuantity >= 1) {
+            updateItemQuantity({ public_id: cartItem.public_id, quantity: newQuantity })
+                .unwrap()
+                // .then((updatedItem) => { /* Optional: handle success */ })
+                .catch(() => toast.error("Erreur lors de la mise à jour de la quantité"));
+        }
+    };
+
+    // Ensure cartItem and cartItem.product exist before trying to access their properties
+    if (!cartItem || !cartItem.product) {
+        return <ProductWrapper>Données du produit non disponibles.</ProductWrapper>;
     }
+    
     return (
         <ProductWrapper>
             <Img src={cartItem.product.image_link} />
             <Description>
                 <LeftPart>
                     <Title onClick={() => navigate(`/products/${cartItem.product.public_id}`)}>{cartItem.product.name}</Title>
-                    <ShortDescription>{cartItem.product.supplier.name}</ShortDescription>
+                    <ShortDescription>{cartItem.product.supplier?.name || 'Fournisseur inconnu'}</ShortDescription>
                     <Actions>
                         <NumberOfItemsContainer>
-                            <Minus onClick={() => setNumberOfItems(cartItem.quantity > 1 ? cartItem.quantity - 1 : 1)}><FaMinus /></Minus>
+                            <Minus 
+                                onClick={() => handleQuantityChange(cartItem.quantity - 1)} 
+                                disabled={isUpdating || isDeleting || cartItem.quantity <= 1}
+                            ><FaMinus /></Minus>
                             <NumberOfItems>{cartItem.quantity}</NumberOfItems>
-                            <Plus onClick={() => setNumberOfItems(cartItem.quantity + 1)}><FaPlus /></Plus>
+                            <Plus 
+                                onClick={() => handleQuantityChange(cartItem.quantity + 1)} 
+                                disabled={isUpdating || isDeleting}
+                            ><FaPlus /></Plus>
                         </NumberOfItemsContainer>
-                        <DeleteWrapper onClick={deleteProduct_}><RiDeleteBinLine /></DeleteWrapper>
+                        <DeleteWrapper onClick={handleDelete} disabled={isDeleting || isUpdating}>
+                            {isDeleting ? '...' : <RiDeleteBinLine />}
+                        </DeleteWrapper>
                     </Actions>
                 </LeftPart>
                 <Prices>
-                    <PriceHT>{`${eur(cartItem.product.price * cartItem.quantity)} HT`}</PriceHT>
-                    <PriceTTC>{eur(cartItem.product.price * cartItem.quantity * (1+ cartItem.product.tva.value))} TTC</PriceTTC>
+                    <PriceHT>{`${eur((cartItem.product.price || 0) * (cartItem.quantity || 0))} HT`}</PriceHT>
+                    <PriceTTC>{eur((cartItem.product.price || 0) * (cartItem.quantity || 0) * (1 + (cartItem.product.tva?.value || 0)))} TTC</PriceTTC>
                 </Prices>
             </Description>
         </ProductWrapper>

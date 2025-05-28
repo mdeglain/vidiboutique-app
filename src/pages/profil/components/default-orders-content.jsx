@@ -17,10 +17,15 @@ import { ThemeContext } from '@/contexts/theme-context';
 import { Modal } from '@/components/modal/modal';
 import { DefaultOrderModalContent } from './components/default-order-modal-content';
 import toast from 'react-hot-toast';
-import axios from '@/libs/axios';
-import { selectDefaultOrders } from '@/features/default-order/default-order.selector';
-import { useDispatch, useSelector } from 'react-redux';
-import { addDefaultOrder, removeDefaultOrder } from '@/features/default-order/default-order.slice';
+// import axios from '@/libs/axios'; // Removed axios
+// import { selectDefaultOrders } from '@/features/default-order/default-order.selector'; // Removed selector
+// import { useDispatch, useSelector } from 'react-redux'; // Removed useDispatch and useSelector if only used for slice
+// import { addDefaultOrder, removeDefaultOrder } from '@/features/default-order/default-order.slice'; // Removed slice actions
+import {
+    useGetDefaultOrdersQuery,
+    useCreateDefaultOrderMutation,
+    useDeleteDefaultOrderMutation,
+} from '@/features/default-order/defaultOrderApi'; // RTK Query hooks
 
 const Container = styled('div')({
     position: "relative",
@@ -41,10 +46,9 @@ const AddNewCommand = styled('div')(({ theme }) => ({
 }))
 
 export const DefaultOrdersList = () => {
-//   const [orders, setOrders] = useState([]);
-//   const [loading, setLoading] = useState(true);
-    const dispatch = useDispatch();
-    const orders = useSelector(selectDefaultOrders)
+    const { data: orders = [], isLoading, isError, error } = useGetDefaultOrdersQuery();
+    const [createDefaultOrderMutation, { isLoading: isCreating }] = useCreateDefaultOrderMutation();
+    const [deleteDefaultOrderMutation, { isLoading: isDeleting }] = useDeleteDefaultOrderMutation();
 
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [newOrderName, setNewOrderName] = useState('');
@@ -53,80 +57,92 @@ export const DefaultOrdersList = () => {
 
     const columns = [{ id: 'name', label: 'Nom', align: 'left' }];
 
-  const handleDeleteOrder = (orderId, e) => {
-    e.stopPropagation();
-    axios.delete(`/default-orders/${orderId}`).then(response => {
-        dispatch(removeDefaultOrder(orderId))
-        toast.success("La commande par défaut a bien été supprimée")
-    }).catch(_ => {
-        toast.error("Une erreur est survenue lors de la suppression de la commande par défaut")
-    })
-  };
+    const handleDeleteOrder = (orderId, e) => {
+        e.stopPropagation();
+        deleteDefaultOrderMutation(orderId)
+            .unwrap()
+            .then(() => {
+                toast.success("La commande par défaut a bien été supprimée");
+            })
+            .catch(() => {
+                toast.error("Une erreur est survenue lors de la suppression de la commande par défaut");
+            });
+    };
 
-  const onCreateClick = () => {
-    setIsModalOpen(true);
-  };
+    const onCreateClick = () => {
+        setIsModalOpen(true);
+    };
 
-  const onCloseModal = () => {
-    setIsModalOpen(false);
-    setNewOrderName('');
-  };
+    const onCloseModal = () => {
+        setIsModalOpen(false);
+        setNewOrderName('');
+    };
 
-  const handleSubmitNewOrder = () => {
-    if (!newOrderName.trim()) return;
+    const handleSubmitNewOrder = () => {
+        if (!newOrderName.trim()) return;
 
-    axios.post('default-orders', { name: newOrderName }).then(response => {
-        dispatch(addDefaultOrder(response.data.data))
-        setIsModalOpen(false)
-        setNewOrderName('')
-        toast.success("La commande par défaut a bien été créée")
-    }).catch(_ => {
-        toast.error("Une erreur est survenue lors de la création de la commande par défaut")
-    })
-  };
+        createDefaultOrderMutation({ name: newOrderName })
+            .unwrap()
+            .then(() => {
+                setIsModalOpen(false);
+                setNewOrderName('');
+                toast.success("La commande par défaut a bien été créée");
+            })
+            .catch(() => {
+                toast.error("Une erreur est survenue lors de la création de la commande par défaut");
+            });
+    };
 
-  const handleEditOrder = (orderId) => {
-    navigate(`/default-orders/${orderId}`);
-  };
+    const handleEditOrder = (orderId) => {
+        navigate(`/default-orders/${orderId}`);
+    };
 
-//   if (loading) {
-//     return <Typography>Chargement...</Typography>;
-//   }
-
-  return (
-    <Container>
-            <AddNewCommand onClick={onCreateClick}>+ Créer une nouvelle commande</AddNewCommand>
+    return (
+        <Container>
+            <AddNewCommand onClick={onCreateClick} disabled={isCreating || isDeleting}>
+                {isCreating ? "Création..." : "+ Créer une nouvelle commande"}
+            </AddNewCommand>
             <TableContainer component={Paper}>
                 <Table sx={{ minWidth: 500 }} aria-label="custom pagination table">
                     <TableHead>
                         <TableRow>
                             {columns.map((column, columnIndex) => (
-                                <>
-                                    {columnIndex === 0 ? <TableCell key={0} align={"left"}>N°</TableCell> : null}
+                                <React.Fragment key={column.id}>
+                                    {columnIndex === 0 && <TableCell align={"left"}>N°</TableCell>}
                                     <TableCell
-                                        key={column.id}
                                         align={column.align}
                                         style={{ minWidth: column.minWidth }}
                                     >
                                         {column.label}
                                     </TableCell>
-                                    {columnIndex === columns.length - 1 ? <TableCell key={0} align={"center"}>Actions</TableCell> : null}
-                                </>
+                                    {columnIndex === columns.length - 1 && <TableCell align={"center"}>Actions</TableCell>}
+                                </React.Fragment>
                             ))}
                         </TableRow>
                     </TableHead>
                     <TableBody>
-                        {orders
-                            .map((order, rowIndex) => {
+                        {isLoading && (
+                            <TableRow>
+                                <TableCell colSpan={columns.length + 2} align="center">Chargement...</TableCell>
+                            </TableRow>
+                        )}
+                        {isError && (
+                            <TableRow>
+                                <TableCell colSpan={columns.length + 2} align="center">
+                                    Erreur: {error?.data?.message || error?.message || 'Impossible de charger les commandes par défaut'}
+                                </TableCell>
+                            </TableRow>
+                        )}
+                        {!isLoading && !isError && orders.map((order, rowIndex) => {
                                 return (
                                     <TableRow hover role="checkbox" tabIndex={-1} key={order.id}>
-                                        <TableCell key={rowIndex + 1} align={"left"}>{rowIndex + 1}</TableCell>
-                                        <TableCell key={"commandNumber"} align={"left"}>{order.name}</TableCell>
-                                        <TableCell key={rowIndex + 1} align={"center"}>
-                                            <IconButton onClick={() => handleEditOrder(order.public_id)}>
+                                        <TableCell align={"left"}>{rowIndex + 1}</TableCell>
+                                        <TableCell align={"left"}>{order.name}</TableCell>
+                                        <TableCell align={"center"}>
+                                            <IconButton onClick={() => handleEditOrder(order.public_id)} disabled={isDeleting || isCreating}>
                                                 <EditIcon style={{ color: theme.colors.primary }} />
                                             </IconButton>
-                                            <IconButton onClick={(e) => handleDeleteOrder(order.public_id, e)}>
+                                            <IconButton onClick={(e) => handleDeleteOrder(order.public_id, e)} disabled={isDeleting || isCreating}>
                                                 <DeleteIcon style={{ color: theme.colors.danger }} />
                                             </IconButton>
                                         </TableCell>
@@ -137,8 +153,15 @@ export const DefaultOrdersList = () => {
                 </Table>
             </TableContainer>
             <Modal open={isModalOpen} onClose={onCloseModal} width="40%">
-            <DefaultOrderModalContent isNew={true} name={newOrderName} handleNameChange={setNewOrderName} submit={handleSubmitNewOrder} cancel={() => setIsModalOpen(false)} />
+                <DefaultOrderModalContent 
+                    isNew={true} 
+                    name={newOrderName} 
+                    handleNameChange={setNewOrderName} 
+                    submit={handleSubmitNewOrder} 
+                    cancel={onCloseModal} 
+                    isLoading={isCreating}
+                />
             </Modal>
         </Container>
-  );
+    );
 };

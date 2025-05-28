@@ -6,9 +6,10 @@ import { ShippingCostAdvice } from "./shipping-cost-advice"
 
 import { eur } from "@/utils/format"
 import { calculateTotal, calculateShippingCosts } from "@/utils"
-import axios from "@/libs/axios"
+// import axios from "@/libs/axios" // Removed axios
 import toast from "react-hot-toast"
-import { selectAdminOrders, selectOrders, setAdminOrders } from "@/features/orders/orders.slice";
+// import { selectAdminOrders, selectOrders, setAdminOrders } from "@/features/orders/orders.slice"; // Removed slice imports
+import { useUpdateOrderStatusMutation } from "@/features/order/orderApi"; // RTK Query hook
 import { FaSquareCheck, FaSquareXmark } from "react-icons/fa6";
 import { ThemeContext } from "@/contexts/theme-context";
 
@@ -96,39 +97,46 @@ const Button = styled("button")(({ theme, disabled, color }) => ({
     },
 }))
 
-export const Checkout = ({ isEditable, order, setOrder }) => {
-    const dispatch = useDispatch()
+export const Checkout = ({ isEditable, order }) => { // Removed setOrder prop
+    // const dispatch = useDispatch() // Removed dispatch
     const [isModalOpen, setIsModalOpen] = React.useState(false);
     const [message, setMessage] = React.useState("Pas de commentaire");
-    const [selectedOrder, setSelectedOrder] = React.useState(null)
-    const [selectedOrderStatus, setSelectedOrderStatus] = React.useState(null)
+    // selectedOrder and selectedOrderStatus will now directly use the 'order' prop from parent
+    // const [selectedOrder, setSelectedOrder] = React.useState(null) 
+    // const [selectedOrderStatus, setSelectedOrderStatus] = React.useState(null)
+    const [currentActionStatus, setCurrentActionStatus] = React.useState(null); // To store 'APPROVED' or 'REFUSED' for modal
+
     const orderItems = order?.order_items || []
-    const orders = isEditable ? useSelector(selectAdminOrders) : useSelector(selectOrders)
+    // const orders = isEditable ? useSelector(selectAdminOrders) : useSelector(selectOrders) // Removed selector
 
     const theme = React.useContext(ThemeContext)
+    const [updateOrderStatus, { isLoading: isUpdatingStatus }] = useUpdateOrderStatusMutation();
 
-    const writeMessage = (order, status) => {
-        setSelectedOrder(order)
-        setSelectedOrderStatus(status)
-        setMessage("Pas de commentaire")
-        setIsModalOpen(true)
+    const writeMessage = (status) => { // order prop is already available in the component scope
+        setCurrentActionStatus(status); // Set whether it's an approve or refuse action
+        setMessage(order?.message || "Pas de commentaire"); // Pre-fill with existing message if any, or default
+        setIsModalOpen(true);
     }
 
     const closeModal = () => {
-        setIsModalOpen(false)
-        setMessage("Pas de commentaire")
+        setIsModalOpen(false);
+        setMessage("Pas de commentaire"); // Reset message on close
+        setCurrentActionStatus(null);
     }
 
-    const validateOrRefuseOrder = ({ order, status }) => {
-        axios.patch(`/orders/${order.public_id}`, {status, message}).then(response => {
-            const updatedOrder = response.data.data
-            const updatedOrders = orders.map(o => o.id === updatedOrder.id ? updatedOrder : o)
-            dispatch(setAdminOrders(updatedOrders))
-            setMessage("Pas de commentaire")
-            setIsModalOpen(false)
-        }).catch(error => {
-            toast.error("Erreur lors de la modification de la commande")
-        })
+    const handleStatusUpdate = () => {
+        if (!order || !currentActionStatus) return;
+
+        updateOrderStatus({ public_id: order.public_id, status: currentActionStatus, message })
+            .unwrap()
+            .then(() => {
+                toast.success(`Commande ${currentActionStatus === 'APPROVED' ? 'acceptée' : 'refusée'}.`);
+                closeModal();
+                // The order data in parent (order.jsx) will be updated automatically by RTK Query cache invalidation
+            })
+            .catch((err) => {
+                toast.error(err?.data?.message || "Erreur lors de la mise à jour de la commande.");
+            });
     }
 
     const total_ht = calculateTotal(orderItems, false)
@@ -160,42 +168,43 @@ export const Checkout = ({ isEditable, order, setOrder }) => {
             {isEditable && 
                 <ButtonWrapper>
                     <Button onClick={(e) => {
-                        e.stopPropagation()
-                        writeMessage(order, "APPROVED")
-                    }} color={"success"}>Accepter</Button>
+                        e.stopPropagation();
+                        writeMessage("APPROVED");
+                    }} color={"success"} disabled={isUpdatingStatus}>Accepter</Button>
                     <Button onClick={(e) => {
-                        e.stopPropagation()
-                        writeMessage(order, "REFUSED")
-                    }} color={"danger"}>Refuser</Button>
+                        e.stopPropagation();
+                        writeMessage("REFUSED");
+                    }} color={"danger"} disabled={isUpdatingStatus}>Refuser</Button>
                 </ButtonWrapper>
             }
             <Modal
                 open={isModalOpen}
-                onClose={closeModal}
+                onClose={closeModal} // Use closeModal directly
                 >
                 <StyledBox>
                     <Typography id="modal-modal-title" variant="h6" component="h2">
-                    Message
+                    Message pour {currentActionStatus === 'APPROVED' ? 'acceptation' : 'refus'}
                     </Typography>
-                    <TextArea disabled={isEditable ? false : true} onChange={(e) => setMessage(e.target.value)}>{message}</TextArea>
-
+                    <TextArea 
+                        disabled={!isEditable || isUpdatingStatus} 
+                        onChange={(e) => setMessage(e.target.value)} 
+                        value={message} // Controlled component
+                    />
                     <Buttons>
-                        {
-                            isEditable ? (
-                                <>
-                                <Button onClick={closeModal} color={"primary"} onClick={closeModal}>Fermer</Button>
-                                <Button 
-                                    onClick={closeModal}
-                                    color={selectedOrderStatus === "APPROVED" ? "success" : "danger"}
-                                    onClick={() => validateOrRefuseOrder({order: selectedOrder, status: selectedOrderStatus})}
-                                >{selectedOrderStatus === "APPROVED" ? "Valider" : "Refuser"}</Button>
-                                </>
-                            ) : (
-                                // <Typography id="modal-modal-description" sx={{ mt: 2 }}>
-                                    <Button onClick={closeModal} color={"primary"}>Fermer</Button>
-                                // </Typography>
-                            )
-                        }
+                        {isEditable ? (
+                            <>
+                            <Button onClick={closeModal} color={"primary"} disabled={isUpdatingStatus}>Fermer</Button>
+                            <Button 
+                                color={currentActionStatus === "APPROVED" ? "success" : "danger"}
+                                onClick={handleStatusUpdate}
+                                disabled={isUpdatingStatus}
+                            >
+                                {isUpdatingStatus ? 'En cours...' : (currentActionStatus === "APPROVED" ? "Valider" : "Refuser")}
+                            </Button>
+                            </>
+                        ) : (
+                            <Button onClick={closeModal} color={"primary"}>Fermer</Button>
+                        )}
                     </Buttons>
                 </StyledBox>
             </Modal>

@@ -20,10 +20,32 @@ export const defaultOrderApi = apiSlice.injectEndpoints({
       }),
       invalidatesTags: [{ type: 'DefaultOrder', id: 'LIST' }],
     }),
+    getDefaultOrderById: builder.query({
+      query: (id) => `/default-orders/${id}`,
+      providesTags: (result, error, id) => [{ type: 'DefaultOrder', id }],
+    }),
+    updateDefaultOrder: builder.mutation({
+      query: ({ id, ...patch }) => ({
+        url: `/default-orders/${id}`,
+        method: 'PUT',
+        body: patch,
+      }),
+      invalidatesTags: (result, error, { id }) => [{ type: 'DefaultOrder', id }, { type: 'DefaultOrder', id: 'LIST' }],
+    }),
+    deleteDefaultOrder: builder.mutation({
+      query: (id) => ({
+        url: `/default-orders/${id}`,
+        method: 'DELETE',
+      }),
+      invalidatesTags: (result, error, id) => [{ type: 'DefaultOrder', id }, { type: 'DefaultOrder', id: 'LIST' }],
+    }),
   }),
 });
 
 export const {
   useGetDefaultOrdersQuery,
   useCreateDefaultOrderMutation,
+  useGetDefaultOrderByIdQuery,
+  useUpdateDefaultOrderMutation,
+  useDeleteDefaultOrderMutation,
 } = defaultOrderApi;

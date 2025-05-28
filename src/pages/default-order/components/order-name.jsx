@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { styled, TextField } from "@mui/material";
-import axios from "@/libs/axios";
+// import axios from "@/libs/axios"; // Removed axios
 
 import { Label } from "@/components"
 
@@ -24,30 +24,28 @@ const Title = styled("div")(({ theme }) => ({
     textDecoration: "underline",
 }))
 
-export const OrderName = ({ orderName, publicId }) => {
+export const OrderName = ({ initialName, onNameChange }) => { // publicId removed, onNameChange added
     const [isEditing, setIsEditing] = useState(false);
-    const [name, setName] = useState(orderName);
+    const [currentName, setCurrentName] = useState(initialName);
 
     useEffect(() => {
-        setName(orderName);
-    }, [orderName]);
+        setCurrentName(initialName);
+    }, [initialName]);
 
     const handleChange = (e) => {
-        setName(e.target.value);
+        setCurrentName(e.target.value);
     };
 
-    const handleBlur = async () => {
-        if (name !== orderName) {
-            try {
-                await axios.put(`/default-orders/${publicId}`, {
-                    name
-                });
-                setIsEditing(false);
-            } catch (error) {
-                console.error("Error updating order name:", error);
-            }
-        } else {
-            setIsEditing(false);
+    const handleBlur = () => {
+        setIsEditing(false);
+        if (currentName !== initialName) {
+            onNameChange(currentName); // Call the callback prop
+        }
+    };
+    
+    const handleKeyDown = (e) => {
+        if (e.key === 'Enter') {
+            handleBlur(); // Or directly call onNameChange if preferred
         }
     };
 
@@ -55,20 +53,21 @@ export const OrderName = ({ orderName, publicId }) => {
         setIsEditing(true);
     };
 
-    // if (!order) return null;
-
     return (
         <InputWrapper>
             {isEditing ? (
-                <TextFieldWrapper size="small"
+                <TextFieldWrapper 
+                    size="small"
                     variant="outlined"
-                    value={name}
+                    value={currentName}
                     onChange={handleChange}
                     onBlur={handleBlur}
-                    autoFocus />
+                    onKeyDown={handleKeyDown} // Added Enter key handler
+                    autoFocus 
+                />
             ) : (
                 <Title onClick={handleClick} style={{ cursor: "pointer" }}>
-                    {name || "Cliquez pour ajouter un nom"}
+                    {currentName || "Cliquez pour ajouter un nom"}
                 </Title>
             )}
             

@@ -42,6 +42,14 @@ export const orderApi = apiSlice.injectEndpoints({
             ]
           : [{ type: 'AdminOrder', id: 'LIST' }],
     }),
+    createOrder: builder.mutation({
+      query: (newOrderData) => ({
+        url: '/orders',
+        method: 'POST',
+        body: newOrderData,
+      }),
+      invalidatesTags: [{ type: 'Order', id: 'LIST' }], 
+    }),
   }),
 });
 
@@ -49,5 +57,6 @@ export const {
   useGetOrdersQuery,
   useGetOrderByIdQuery,
   useUpdateOrderStatusMutation,
-  useGetAdminOrdersQuery, // Export the new hook
+  useGetAdminOrdersQuery,
+  useCreateOrderMutation, // Export the new hook
 } = orderApi;

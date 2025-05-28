@@ -10,9 +10,9 @@ import filterReducer from "@/features/filter/filter.slice";
 import categoryReducer from "@/features/category/category.slice";
 import searchReducer from "@/features/search/search.slice";
 import basketReducer from "@/features/basket/basket.slice";
-import addressReducer from "@/features/address/address.slice";
-import ordersReducer from "@/features/orders/orders.slice";
-import defaultOrderReducer from "@/features/default-order/default-order.slice";
+// import addressReducer from "@/features/address/address.slice"; // Removed
+// import ordersReducer from "@/features/orders/orders.slice"; // Removed
+// import defaultOrderReducer from "@/features/default-order/default-order.slice"; // Removed
 
 const persistConfig = {
     key: "root",
@@ -27,9 +27,9 @@ const rootReducer = combineReducers({
     category: categoryReducer,
     search: searchReducer,
     basket: basketReducer,
-    address: addressReducer,
-    orders: ordersReducer,
-    defaultOrder: defaultOrderReducer,
+    // address: addressReducer, // Removed
+    // orders: ordersReducer, // Removed
+    // defaultOrder: defaultOrderReducer, // Removed
     [apiSlice.reducerPath]: apiSlice.reducer,
 });
 
