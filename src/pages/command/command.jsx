@@ -11,7 +11,7 @@ import { useCreateOrderMutation } from "@/features/order/orderApi"; // RTK Query
 
 import { Address, Summary } from "./components";
 import { ModalRPPS } from "./components/modal-rpps";
-import { resetCart } from "@/features/basket/basket.slice";
+// import { resetCart } from "@/features/basket/basket.slice"; // Removed
 // import { selectAddresses } from "@/features/address/address.slice"; // Removed old selector
 import toast from "react-hot-toast";
 

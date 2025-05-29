@@ -61,5 +61,30 @@ export const {
   useGetOrderByIdQuery,
   useUpdateOrderStatusMutation,
   useGetAdminOrdersQuery,
-  useCreateOrderMutation, // Export the new hook
+  useCreateOrderMutation,
+  updateOrderItem: builder.mutation({
+    query: ({ orderItemPublicId, quantity }) => ({
+      url: `/orders-items/${orderItemPublicId}`,
+      method: 'PUT',
+      body: { quantity },
+    }),
+    invalidatesTags: (result, error, { orderId }) => [{ type: 'Order', id: orderId }],
+  }),
+  removeOrderItem: builder.mutation({
+    query: ({ orderItemPublicId }) => ({
+      url: `/orders-items/${orderItemPublicId}`,
+      method: 'DELETE',
+    }),
+    invalidatesTags: (result, error, { orderId }) => [{ type: 'Order', id: orderId }],
+  }),
+} = orderApi;
+
+export const {
+  useGetOrdersQuery,
+  useGetOrderByIdQuery,
+  useUpdateOrderStatusMutation,
+  useGetAdminOrdersQuery,
+  useCreateOrderMutation,
+  useUpdateOrderItemMutation, // Export new hook
+  useRemoveOrderItemMutation, // Export new hook
 } = orderApi;

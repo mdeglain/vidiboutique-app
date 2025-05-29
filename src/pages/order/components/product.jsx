@@ -4,11 +4,16 @@ import { useDispatch } from "react-redux"
 
 import { FaMinus, FaPlus } from "react-icons/fa6";
 import { RiDeleteBinLine } from "react-icons/ri";
+import { CircularProgress } from "@mui/material"; // Added for loading state
 
-import { updateQuantity, deleteProduct } from "@/features/basket/basket.slice"
+// import { updateQuantity, deleteProduct } from "@/features/basket/basket.slice"; // Removed
+import { 
+    useUpdateOrderItemMutation, 
+    useRemoveOrderItemMutation 
+} from "@/features/order/orderApi"; // RTK Query hooks
 
-import { eur } from "@/utils/format"
-import axios from '@/libs/axios';
+import { eur } from "@/utils/format";
+// import axios from '@/libs/axios'; // Removed
 import toast from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
 
@@ -179,59 +184,74 @@ const PriceTTC = styled("div")(({ theme }) => ({
     fontWeight: theme.fontWeights.bold,
 }))
 
-export const Product = ({ isEditable, orderItem, setOrder }) => {
-    const dispatch = useDispatch()
-    const navigate = useNavigate()
+export const Product = ({ isEditable, orderItem, parentOrderId }) => { // Removed setOrder prop
+    // const dispatch = useDispatch(); 
+    const navigate = useNavigate();
 
-    const updateQuantity_ = ({publicId, quantity}) => {
-        setOrder((prevOrder) => {
-            const newOrder = { ...prevOrder }
-            newOrder.order_items = newOrder.order_items.map((item) => {
-                if (item.public_id === publicId) {
-                    return { ...item, quantity: quantity }
-                }
-                return item
+    const [updateItem, { isLoading: isUpdating }] = useUpdateOrderItemMutation();
+    const [removeItem, { isLoading: isDeleting }] = useRemoveOrderItemMutation();
+
+    const handleDelete = () => {
+        if (!parentOrderId) {
+            toast.error("Erreur: ID de commande parent manquant.");
+            return;
+        }
+        removeItem({ orderItemPublicId: orderItem.public_id, orderId: parentOrderId })
+            .unwrap()
+            .then(() => {
+                // UI update will now rely on cache invalidation and parent component re-render
+                toast.success("Produit supprimé de la commande.");
             })
-            return newOrder
-        })
-        // dispatch(updateQuantity(quantity))
-    }
+            .catch(() => toast.error("Erreur lors de la suppression."));
+    };
 
-    const deleteProduct_ = () => {
-        axios.delete(`/orders-items/${orderItem.public_id}`).then(_ => {
-            setOrder((prevOrder) => {
-                const newOrder = { ...prevOrder }
-                newOrder.order_items = newOrder.order_items.filter((item) => item.public_id !== orderItem.public_id)
-                return newOrder
+    const handleQuantityChange = (newQuantity) => {
+        if (newQuantity < 1 || !parentOrderId) {
+            if(!parentOrderId) toast.error("Erreur: ID de commande parent manquant.");
+            return;
+        }
+        updateItem({ orderItemPublicId: orderItem.public_id, quantity: newQuantity, orderId: parentOrderId })
+            .unwrap()
+            .then((updatedItemData) => {
+                // UI update will now rely on cache invalidation and parent component re-render
+                toast.success("Quantité mise à jour.");
             })
-            toast.success("Produit supprimé du panier")
-        })
+            .catch(() => toast.error("Erreur lors de la mise à jour."));
+    };
+
+    if (!orderItem || !orderItem.product) {
+        return <ProductWrapper>Données de l'article non disponibles.</ProductWrapper>;
     }
 
-    const setNumberOfItems = (numberOfItems) => {
-        axios.put(`/orders-items/${orderItem.public_id}`, { quantity: numberOfItems }).then(response => {
-            updateQuantity_({ publicId: response.data.data.public_id, quantity: response.data.data.quantity })
-        })
-    }
     return (
         <ProductWrapper>
             <Img src={orderItem.product.image_link} />
             <Description>
                 <LeftPart>
                     <Title onClick={() => navigate(`/products/${orderItem.product.public_id}`)}>{orderItem.product.name}</Title>
-                    <ShortDescription>{orderItem.product.supplier.name}</ShortDescription>
+                    <ShortDescription>{orderItem.product.supplier?.name || 'Fournisseur inconnu'}</ShortDescription>
                     <Actions>
                         <NumberOfItemsContainer>
-                            <Minus disabled={!isEditable} onClick={() => setNumberOfItems(orderItem.quantity > 1 ? orderItem.quantity - 1 : 1)}><FaMinus /></Minus>
+                            <Minus 
+                                disabled={!isEditable || isUpdating || isDeleting || orderItem.quantity <= 1} 
+                                onClick={() => handleQuantityChange(orderItem.quantity - 1)}
+                            ><FaMinus /></Minus>
                             <NumberOfItems>{orderItem.quantity}</NumberOfItems>
-                            <Plus disabled={!isEditable} onClick={() => setNumberOfItems(orderItem.quantity + 1)}><FaPlus /></Plus>
+                            <Plus 
+                                disabled={!isEditable || isUpdating || isDeleting} 
+                                onClick={() => handleQuantityChange(orderItem.quantity + 1)}
+                            ><FaPlus /></Plus>
                         </NumberOfItemsContainer>
-                        {isEditable && <DeleteWrapper onClick={deleteProduct_}><RiDeleteBinLine /></DeleteWrapper>}
+                        {isEditable && (
+                            <DeleteWrapper onClick={handleDelete} disabled={isDeleting || isUpdating}>
+                                {isDeleting ? <CircularProgress size={18} color="inherit"/> : <RiDeleteBinLine />}
+                            </DeleteWrapper>
+                        )}
                     </Actions>
                 </LeftPart>
                 <Prices>
-                    <PriceHT>{`${eur(orderItem.product.price * orderItem.quantity)} HT`}</PriceHT>
-                    <PriceTTC>{eur(orderItem.product.price * orderItem.quantity * (1+ orderItem.product.tva.value))} TTC</PriceTTC>
+                    <PriceHT>{`${eur((orderItem.product.price || 0) * (orderItem.quantity || 0))} HT`}</PriceHT>
+                    <PriceTTC>{eur((orderItem.product.price || 0) * (orderItem.quantity || 0) * (1 + (orderItem.product.tva?.value || 0)))} TTC</PriceTTC>
                 </Prices>
             </Description>
         </ProductWrapper>

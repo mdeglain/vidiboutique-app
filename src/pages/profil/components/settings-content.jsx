@@ -1,10 +1,12 @@
 import React from 'react';
 import { styled } from '@mui/system';
-
-import axios from '@/libs/axios';
-import { TextField } from '@mui/material';
+import { TextField, CircularProgress } from '@mui/material'; // Added CircularProgress
 import { useDispatch, useSelector } from 'react-redux';
-import { updateUser } from '@/features/auth/user.slice';
+import { updateUser } from '@/features/auth/user.slice'; // Keep for now for immediate UI update
+import { 
+    useUpdateUserProfileMutation, 
+    useChangePasswordMutation 
+} from '@/features/user/userApi'; // RTK Query hooks
 import toast from 'react-hot-toast';
 
 const Wrapper = styled('div')(({ theme }) => ({
@@ -69,95 +71,137 @@ const Label = ({ isRequired, children }) => {
 }
 
 export const SettingsContent = () => {
-    const dispatch = useDispatch()
+    const dispatch = useDispatch();
+    const user = useSelector((state) => state.user); // Assuming user.id is the correct ID for the API
 
-    const user = useSelector((state) => state.user)
+    const [updateProfile, { isLoading: isUpdatingProfile }] = useUpdateUserProfileMutation();
+    const [changeUserPassword, { isLoading: isChangingPassword }] = useChangePasswordMutation();
 
     const [personnalInformations, setPersonnalInformations] = React.useState({
-        "firstName": user.firstName,
-        "lastName": user.lastName,
-        "email": user.email
-    })
+        firstName: user.firstName || "", // Ensure initial state is defined
+        lastName: user.lastName || "",
+        email: user.email || ""
+    });
 
     const [passwordInformations, setPasswordInformations] = React.useState({
-        "old_password": "",
-        "new_password": "",
-        "confirm_password": ""
-    })
+        old_password: "",
+        new_password: "",
+        confirm_password: ""
+    });
+    
+    React.useEffect(() => { // Keep local form state in sync if user object in Redux changes
+        setPersonnalInformations({
+            firstName: user.firstName || "",
+            lastName: user.lastName || "",
+            email: user.email || ""
+        });
+    }, [user.firstName, user.lastName, user.email]);
+
 
     const handleChangePersonnalInformations = (event) => {
         setPersonnalInformations({
             ...personnalInformations,
             [event.target.name]: event.target.value
-        })
+        });
     }
 
     const handleChangePasswordInformations = (event) => {
         setPasswordInformations({
             ...passwordInformations,
             [event.target.name]: event.target.value
-        })
+        });
     }
 
     const onPersonnalInformationsSubmit = () => {
-        axios.put(`/users/${user.id}`, {
-            "first_name": personnalInformations.firstName,
-            "last_name": personnalInformations.lastName,
-            "email": personnalInformations.email
-        }).then((_) => {
-            dispatch(updateUser(personnalInformations))
+        if (!user.id) {
+            toast.error("ID utilisateur manquant.");
+            return;
+        }
+        updateProfile({ 
+            id: user.id, 
+            first_name: personnalInformations.firstName, 
+            last_name: personnalInformations.lastName, 
+            email: personnalInformations.email 
         })
+        .unwrap()
+        .then((updatedUserData) => {
+            // The `User ME` tag invalidation should trigger useGetMeQuery to refetch in GetDefaultData,
+            // which then dispatches `setUser` to update the user state.
+            // Dispatching `updateUser` here can provide a more immediate UI update if desired,
+            // but it's a local optimistic update of sorts before the refetch confirms.
+            dispatch(updateUser(personnalInformations)); // For immediate UI update from form
+            toast.success("Informations personnelles mises à jour.");
+        })
+        .catch((err) => {
+            toast.error(err?.data?.message || "Erreur lors de la mise à jour.");
+        });
     }
 
     const onPasswordInformationsSubmit = () => {
-        axios.put(`/users/${user.id}/password`, {
-            "old_password": passwordInformations.old_password,
-            "new_password": passwordInformations.new_password,
-            "confirm_password": passwordInformations.confirm_password
-        }).then((_) => {
-            setPasswordInformations({
-                "old_password": "",
-                "new_password": "",
-                "confirm_password": ""
-            })
-            toast.success("Mot de passe modifié")
-        }).catch((error) => {
-            toast.error("Une erreur est survenue lors de la modification du mot de passe")
+        if (!user.id) {
+            toast.error("ID utilisateur manquant.");
+            return;
+        }
+        if (passwordInformations.new_password !== passwordInformations.confirm_password) {
+            toast.error("Les nouveaux mots de passe ne correspondent pas.");
+            return;
+        }
+        changeUserPassword({ 
+            id: user.id, 
+            old_password: passwordInformations.old_password, 
+            new_password: passwordInformations.new_password,
+            // confirm_password is often validated on frontend only, API might not need it
+            // but if it does, include it:
+            // confirm_password: passwordInformations.confirm_password 
         })
+        .unwrap()
+        .then(() => {
+            setPasswordInformations({
+                old_password: "",
+                new_password: "",
+                confirm_password: ""
+            });
+            toast.success("Mot de passe modifié avec succès.");
+        })
+        .catch((err) => {
+            toast.error(err?.data?.message || "Erreur lors de la modification du mot de passe.");
+        });
     }
-
-
 
     return (
         <Wrapper>
             <Title>Informations personnelles</Title>
             <InputWrapper>
                 <Label isRequired={false}>Prénom</Label>
-                <TextFieldWrapper name="firstName" size="small" label="" variant="outlined" value={personnalInformations?.firstName} onChange={handleChangePersonnalInformations} />
+                <TextFieldWrapper name="firstName" size="small" label="" variant="outlined" value={personnalInformations.firstName} onChange={handleChangePersonnalInformations} />
             </InputWrapper>
             <InputWrapper>
                 <Label isRequired={false}>Nom</Label>
-                <TextFieldWrapper name="lastName" size="small" label="" variant="outlined" value={personnalInformations?.lastName} onChange={handleChangePersonnalInformations} />
+                <TextFieldWrapper name="lastName" size="small" label="" variant="outlined" value={personnalInformations.lastName} onChange={handleChangePersonnalInformations} />
             </InputWrapper>
             <InputWrapper>
                 <Label isRequired={false}>Email</Label>
-                <TextFieldWrapper name="email" size="small" label="" variant="outlined" value={personnalInformations?.email} onChange={handleChangePersonnalInformations} />
+                <TextFieldWrapper name="email" size="small" label="" variant="outlined" value={personnalInformations.email} onChange={handleChangePersonnalInformations} />
             </InputWrapper>
-            <SubmitButton onClick={onPersonnalInformationsSubmit}>Enregistrer</SubmitButton>
+            <SubmitButton onClick={onPersonnalInformationsSubmit} disabled={isUpdatingProfile}>
+                {isUpdatingProfile ? <CircularProgress size={20} color="inherit"/> : "Enregistrer"}
+            </SubmitButton>
             <Title>Modification du mot de passe</Title>
             <InputWrapper>
                 <Label isRequired={false}>Ancien mot de passe</Label>
-                <TextFieldWrapper type="password" name="old_password" size="small" label="" variant="outlined" value={passwordInformations?.old_password} onChange={handleChangePasswordInformations} />
+                <TextFieldWrapper type="password" name="old_password" size="small" label="" variant="outlined" value={passwordInformations.old_password} onChange={handleChangePasswordInformations} />
             </InputWrapper>
             <InputWrapper>
                 <Label isRequired={false}>Nouveau mot de passe</Label>
-                <TextFieldWrapper type="password" name="new_password" size="small" label="" variant="outlined" value={passwordInformations?.new_password} onChange={handleChangePasswordInformations} />
+                <TextFieldWrapper type="password" name="new_password" size="small" label="" variant="outlined" value={passwordInformations.new_password} onChange={handleChangePasswordInformations} />
             </InputWrapper>
             <InputWrapper>
                 <Label isRequired={false}>Confirmez le mot de passe</Label>
-                <TextFieldWrapper type="password" name="confirm_password" size="small" label="" variant="outlined" value={passwordInformations?.confirm_password} onChange={handleChangePasswordInformations} />
+                <TextFieldWrapper type="password" name="confirm_password" size="small" label="" variant="outlined" value={passwordInformations.confirm_password} onChange={handleChangePasswordInformations} />
             </InputWrapper>
-            <SubmitButton onClick={onPasswordInformationsSubmit}>Enregistrer</SubmitButton>
+            <SubmitButton onClick={onPasswordInformationsSubmit} disabled={isChangingPassword}>
+                {isChangingPassword ? <CircularProgress size={20} color="inherit"/> : "Enregistrer"}
+            </SubmitButton>
         </Wrapper>
     )
 }

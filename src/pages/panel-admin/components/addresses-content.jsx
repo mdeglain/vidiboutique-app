@@ -7,15 +7,22 @@ import {
     Edit as EditIcon
 } from '@mui/icons-material';
 
-import axios from '@/libs/axios';
+// import axios from '@/libs/axios'; // Removed axios
+import { 
+    useGetAddressesQuery, 
+    useCreateAddressMutation, 
+    useUpdateAddressMutation, 
+    useDeleteAddressMutation 
+} from '@/features/address/addressApi'; // RTK Query hooks
 
 import { ThemeContext } from '@/contexts/theme-context';
 
 import { Modal } from '@/components/modal/modal';
 
 import { ModalContent } from './components';
-import { createAddress, removeAddress, selectAddresses, updateAddress } from '@/features/address/address.slice';
+// import { createAddress, removeAddress, selectAddresses, updateAddress } from '@/features/address/address.slice'; // Removed slice imports
 import toast from 'react-hot-toast';
+import { CircularProgress } from '@mui/material'; // For loading states
 
 
 const Container = styled('div')({
@@ -71,13 +78,19 @@ const defaultAdress = {
 export const shouldCheckErrorContext = createContext();
 
 export const AddressesContent = () => {
-    const theme = React.useContext(ThemeContext)
+    const theme = React.useContext(ThemeContext);
 
-    const dispatch = useDispatch()
-    const addresses = useSelector(selectAddresses)
+    // const dispatch = useDispatch(); // Removed as slice actions are no longer dispatched
+    
+    const { data: addressesData, isLoading: isLoadingAddresses, isError: isAddressesError, error: addressesApiError } = useGetAddressesQuery();
+    const addresses = addressesData?.data || []; // Assuming API returns { data: [...] }
+    
+    const [createAddressMutation, { isLoading: isCreating }] = useCreateAddressMutation();
+    const [updateAddressMutation, { isLoading: isUpdating }] = useUpdateAddressMutation();
+    const [deleteAddressMutation, { isLoading: isDeleting }] = useDeleteAddressMutation();
 
-    const [isNew, setIsNew] = React.useState(false)
-    const [address, setAddress] = React.useState(null)
+    const [isNew, setIsNew] = React.useState(false);
+    const [address, setAddress] = React.useState(null); // Local state for modal form
     const [isModalOpen, setIsModalOpen] = React.useState(null)
     const [shouldCheckError, setShouldCheckError] = React.useState(false)
 
@@ -138,34 +151,44 @@ export const AddressesContent = () => {
     }
 
     const submit = () => {
-        if (hasError()) return
+        if (hasError()) return;
+        
+        // Prepare addressData by removing public_id for create, and ensuring it's part of args for update
+        const { public_id, ...addressDataForApi } = address;
+
         if (isNew) {
-            axios.post('addresses', address).then(response => {
-                dispatch(createAddress(response.data.data))
-                setIsModalOpen(false)
-                toast.success("L'adresse a bien été créée")
-            }).catch(_ => {
-                toast.error("Une erreur est survenue lors de la création de l'adresse")
-            })
+            createAddressMutation(addressDataForApi) // Send data without public_id
+                .unwrap()
+                .then(() => {
+                    setIsModalOpen(false);
+                    toast.success("L'adresse a bien été créée");
+                })
+                .catch((err) => {
+                    toast.error(err?.data?.message || "Une erreur est survenue lors de la création de l'adresse");
+                });
         } else {
-            axios.put(`addresses/${address.public_id}`, address).then(response => {
-                dispatch(updateAddress(response.data.data))
-                setIsModalOpen(false)
-                toast.success("L'adresse a bien été modifiée")
-            }).catch(_ => {
-                toast.error("Une erreur est survenue lors de la modification de l'adresse")
-            })
+            updateAddressMutation({ public_id: public_id, ...addressDataForApi })
+                .unwrap()
+                .then(() => {
+                    setIsModalOpen(false);
+                    toast.success("L'adresse a bien été modifiée");
+                })
+                .catch((err) => {
+                    toast.error(err?.data?.message || "Une erreur est survenue lors de la modification de l'adresse");
+                });
         }
     }
 
     const remove = (public_id) => {
-        axios.delete(`addresses/${public_id}`).then(_ => {
-            dispatch(removeAddress(public_id))
-            setIsModalOpen(false)
-            toast.success("L'adresse a bien été supprimée")
-        }).catch(_ => {
-            toast.error("Une erreur est survenue lors de la suppression de l'adresse")
-        })
+        deleteAddressMutation(public_id)
+            .unwrap()
+            .then(() => {
+                // No need to close modal here as delete is not from modal in this UI
+                toast.success("L'adresse a bien été supprimée");
+            })
+            .catch((err) => {
+                toast.error(err?.data?.message || "Une erreur est survenue lors de la suppression de l'adresse");
+            });
     }
 
     const hasError = () => {
@@ -207,33 +230,50 @@ export const AddressesContent = () => {
                     <TableHead>
                         <TableRow>
                             {columns.map((column, columnIndex) => (
-                                <>
-                                    {columnIndex === 0 ? <TableCell key={0} align={"left"}>N°</TableCell> : null}
+                                <React.Fragment key={column.id}>
+                                    {columnIndex === 0 && <TableCell align={"left"}>N°</TableCell>}
                                     <TableCell
-                                        key={column.id}
                                         align={column.align}
                                         style={{ minWidth: column.minWidth }}
                                     >
                                         {column.label}
                                     </TableCell>
-                                    {columnIndex === columns.length - 1 ? <TableCell key={0} align={"center"}>Actions</TableCell> : null}
-                                </>
+                                    {columnIndex === columns.length - 1 && <TableCell align={"center"}>Actions</TableCell>}
+                                </React.Fragment>
                             ))}
                         </TableRow>
                     </TableHead>
                     <TableBody>
-                        {addresses
-                            .map((address, rowIndex) => {
+                        {isLoadingAddresses && (
+                            <TableRow>
+                                <TableCell colSpan={columns.length + 2} align="center">
+                                    <CircularProgress size={24} /> Chargement...
+                                </TableCell>
+                            </TableRow>
+                        )}
+                        {isAddressesError && (
+                            <TableRow>
+                                <TableCell colSpan={columns.length + 2} align="center">
+                                    Erreur: {addressesApiError?.data?.message || addressesApiError?.status || 'Impossible de charger les adresses'}
+                                </TableCell>
+                            </TableRow>
+                        )}
+                        {!isLoadingAddresses && !isAddressesError && addresses.length === 0 && (
+                             <TableRow>
+                                <TableCell colSpan={columns.length + 2} align="center">Aucune adresse enregistrée.</TableCell>
+                            </TableRow>
+                        )}
+                        {!isLoadingAddresses && !isAddressesError && addresses.map((addressItem, rowIndex) => {
                                 return (
-                                    <TableRow hover role="checkbox" tabIndex={-1} key={address.id}>
-                                        <TableCell key={rowIndex + 1} align={"left"}>{rowIndex + 1}</TableCell>
-                                        <TableCell key={"commandNumber"} align={"left"}>{address.name}</TableCell>
-                                        <TableCell key={rowIndex + 1} align={"center"}>
-                                            <IconButton onClick={() => onEditClick(address.public_id)}>
+                                    <TableRow hover role="checkbox" tabIndex={-1} key={addressItem.public_id || addressItem.id}>
+                                        <TableCell align={"left"}>{rowIndex + 1}</TableCell>
+                                        <TableCell align={"left"}>{addressItem.name}</TableCell>
+                                        <TableCell align={"center"}>
+                                            <IconButton onClick={() => onEditClick(addressItem.public_id)} disabled={isDeleting}>
                                                 <EditIcon style={{ color: theme.colors.primary }} />
                                             </IconButton>
-                                            <IconButton onClick={() => remove(address.public_id)}>
-                                                <DeleteIcon style={{ color: theme.colors.danger }} />
+                                            <IconButton onClick={() => remove(addressItem.public_id)} disabled={isDeleting}>
+                                                {isDeleting && address?.public_id === addressItem.public_id ? <CircularProgress size={20} /> : <DeleteIcon style={{ color: theme.colors.danger }} />}
                                             </IconButton>
                                         </TableCell>
                                     </TableRow>
@@ -254,6 +294,7 @@ export const AddressesContent = () => {
                         handleComplementaryInformationsChange={handleComplementaryInformationsChange}
                         submit={submit}
                         cancel={() => setIsModalOpen(false)}
+                        isLoading={isCreating || isUpdating} // Pass loading state to modal content
                     />
                 </shouldCheckErrorContext.Provider>
             </Modal>

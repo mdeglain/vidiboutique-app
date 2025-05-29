@@ -1,7 +1,7 @@
 import React from "react";
 import { styled } from "@mui/system"
 
-import axios from "@/libs/axios";
+// import axios from "@/libs/axios"; // Removed as unused
 
 import { OrdersList } from "@/components"
 

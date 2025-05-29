@@ -19,7 +19,7 @@ import {
 } from "@/features/favorite/favoriteApi"; // RTK Query hooks for favorites
 
 import { eur } from "@/utils/format"
-import axios from "@/libs/axios"; // Keep for other axios calls if any, or remove if all are gone
+// import axios from "@/libs/axios"; // Removed as it's no longer used in this file
 // import { selectDefaultOrders } from "@/features/default-order/default-order.selector"; 
 import toast from "react-hot-toast"
 // import { addItemToDefaultOrder } from "@/features/default-order/default-order.slice"; // Removed

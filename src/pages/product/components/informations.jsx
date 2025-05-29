@@ -10,7 +10,7 @@ import { FaListUl } from "react-icons/fa";
 import { MdFormatListBulleted } from "react-icons/md";
 import { AiOutlineOrderedList } from "react-icons/ai";
 
-import axios from "@/libs/axios"; // Keep for other axios calls if any, or remove if all are gone. For now, only removing favorite usage.
+// import axios from "@/libs/axios"; // Removed as all functionalities (cart, favorites, default orders) are now on RTK Query
 
 // import { addProduct } from "@/features/basket/basket.slice"; 
 import { selectIsAuth } from "@/features/auth/auth.selector";

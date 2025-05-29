@@ -57,7 +57,7 @@ export const Order = (props) => {
                     perhaps by passing specific mutation triggers or by ProductList using its own hooks.
                     For now, removing setOrder as direct state manipulation is replaced by RTK Query's cache updates.
                 */}
-                <ProductList order={order} />
+                <ProductList order={order} parentOrderId={order?.public_id} /> {/* Removed setOrder prop */}
                 <Checkout 
                     isEditable={order?.status === "PENDING" && isAdmin} 
                     order={order} 

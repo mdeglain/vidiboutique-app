@@ -18,7 +18,25 @@ export const authApi = apiSlice.injectEndpoints({
         body: { email },
       }),
     }),
+    verifyPasswordResetToken: builder.query({
+      query: (token) => `/users/reset-password/${token}`,
+    }),
+    confirmPasswordReset: builder.mutation({
+      query: (payload) => ({ 
+        url: '/users/reset-password',
+        method: 'PUT',
+        // Backend expects: { "public_id": user.public_id, "new_password": password.new_password, "confirm_password": password.confirm_password }
+        // The confirm_password is for backend validation, so it should be included if API expects it.
+        // The existing axios call sends new_password and confirm_password.
+        body: { public_id: payload.public_id, new_password: payload.new_password, confirm_password: payload.confirm_password },
+      }),
+    }),
   }),
 });
 
-export const { useLoginMutation, useRequestPasswordResetMutation } = authApi;
+export const { 
+  useLoginMutation, 
+  useRequestPasswordResetMutation,
+  useLazyVerifyPasswordResetTokenQuery, // Export new hook
+  useConfirmPasswordResetMutation,   // Export new hook
+} = authApi;
